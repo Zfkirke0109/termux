@@ -1,0 +1,104 @@
+name: Build beta.3 with PR 5357
+
+on:
+  push:
+    branches: [main, feature/termux-beta3-pr5357]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: beta3-pr5357-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: termux-app
+        shell: bash
+    env:
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Fetch pinned upstream source and backport PR 5357
+        working-directory: .
+        run: |
+          set -euo pipefail
+          source_dir="$RUNNER_TEMP/termux-beta3-source"
+          git clone --depth 1 --branch v0.119.0-beta.3 https://github.com/termux/termux-app.git "$source_dir"
+          test "$(git -C "$source_dir" rev-parse HEAD)" = e634d8f981f48b6b89202cf0e04533f0889e03b3
+          git -C "$source_dir" fetch --depth 2 origin refs/pull/5357/head
+          test "$(git -C "$source_dir" rev-parse FETCH_HEAD)" = 7dd6e3fb1baee13641b08cf129b0f949c0d0e3d7
+          git -C "$source_dir" -c user.name='Custom Termux Builder' -c user.email='noreply@users.noreply.github.com' cherry-pick 7dd6e3fb1baee13641b08cf129b0f949c0d0e3d7
+          mkdir -p termux-app downloads
+          git -C "$source_dir" archive HEAD | tar -x -C termux-app
+          apk=termux-app_v0.119.0-beta.3+apt-android-7-github-debug_arm64-v8a.apk
+          curl --fail --location --retry 3 --output "downloads/$apk" "https://github.com/termux/termux-app/releases/download/v0.119.0-beta.3/${apk/+/%2B}"
+          echo "3bb969df2400d884ccb929b7d79cc76861f291c98942c401e12408d734a460f3  downloads/$apk" | sha256sum --check
+          curl --fail --location --retry 3 --output downloads/upstream-sha256sums 'https://github.com/termux/termux-app/releases/download/v0.119.0-beta.3/termux-app_v0.119.0-beta.3%2Bapt-android-7-github-debug_sha256sums'
+      - name: Install upstream SDK and NDK versions
+        run: sdkmanager 'platforms;android-30' 'build-tools;30.0.3' 'ndk;22.1.7171670'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - name: Identify custom build
+        run: |
+          version="0.119.0-beta.3+pr5357.${GITHUB_SHA:0:7}"
+          echo "TERMUX_APP_VERSION_NAME=$version" >> "$GITHUB_ENV"
+          echo "TERMUX_APK_VERSION_TAG=v$version-apt-android-7-github-debug" >> "$GITHUB_ENV"
+      - name: Test terminal emulator and build signed APKs
+        run: ./gradlew --no-daemon :terminal-emulator:testDebugUnitTest assembleDebug
+      - name: Verify shared-key signatures and generate checksums
+        run: |
+          set -euo pipefail
+          apk_dir=app/build/outputs/apk/debug
+          expected=b6da01480eefd5fbf2cd3771b8d1021ec791304bdd6c4bf41d3faabad48ee5e1
+          test -f "$apk_dir/termux-app_${TERMUX_APK_VERSION_TAG}_arm64-v8a.apk"
+          for apk in "$apk_dir"/*.apk; do
+            "$ANDROID_HOME/build-tools/30.0.3/apksigner" verify --verbose --print-certs "$apk" > "$apk.cert.txt"
+            actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$apk.cert.txt" | tr '[:upper:]' '[:lower:]')"
+            test "$actual" = "$expected"
+          done
+          (cd "$apk_dir" && sha256sum ./*.apk > SHA256SUMS)
+      - name: Upload APKs and verification reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-beta3-pr5357-github-signed
+          if-no-files-found: error
+          path: |
+            termux-app/app/build/outputs/apk/debug/*.apk
+            termux-app/app/build/outputs/apk/debug/*.cert.txt
+            termux-app/app/build/outputs/apk/debug/SHA256SUMS
+            termux-app/app/build/outputs/apk/debug/output-metadata.json
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-emulator-tests
+          path: |
+            termux-app/terminal-emulator/build/reports/tests/
+            termux-app/terminal-emulator/build/test-results/
+      - name: Publish verified source and arm64 APK on this branch
+        working-directory: .
+        run: |
+          set -euo pipefail
+          cp termux-app/app/build/outputs/apk/debug/*_arm64-v8a.apk downloads/
+          cp termux-app/app/build/outputs/apk/debug/*_arm64-v8a.apk.cert.txt downloads/
+          (cd downloads && sha256sum ./*.apk > SHA256SUMS)
+          git -C "$RUNNER_TEMP/termux-beta3-source" ls-files -z | while IFS= read -r -d '' path; do
+            git add -f -- "termux-app/$path"
+          done
+          git add downloads
+          git diff --cached --check
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore: publish verified beta.3 PR 5357 source and signed arm64 APK'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
