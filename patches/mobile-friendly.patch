@@ -209,10 +209,10 @@ index 0000000..84eb14e
 +</resources>
 diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java
 new file mode 100644
-index 0000000..9a5a014
+index 0000000..a523b50
 --- /dev/null
 +++ b/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,47 @@
 +package com.termux.app.terminal;
 +
 +import org.junit.Test;
@@ -234,6 +234,7 @@ index 0000000..9a5a014
 +        assertTrue(MobileTranscriptSearch.find(rows, -3, 0, "").isEmpty());
 +        assertTrue(MobileTranscriptSearch.find(rows, -3, 0, null).isEmpty());
 +        assertTrue(MobileTranscriptSearch.find(rows, -3, 0, "a\nb").isEmpty());
++        assertTrue(MobileTranscriptSearch.find(rows, -3, 0, new String(new char[257])).isEmpty());
 +    }
 +
 +    @Test public void boundsScannedRows() {
@@ -245,7 +246,10 @@ index 0000000..9a5a014
 +
 +    @Test public void boundsCharactersAndResults() {
 +        String longRow = new String(new char[10000]).replace('\0', 'x');
-+        assertTrue(MobileTranscriptSearch.find(row -> longRow, -100, 0, "missing").isEmpty());
++        AtomicInteger scanned = new AtomicInteger();
++        assertTrue(MobileTranscriptSearch.find(row -> { scanned.incrementAndGet(); return longRow; },
++            -100, 0, "missing").isEmpty());
++        assertEquals(MobileTranscriptSearch.MAX_CHARACTERS / longRow.length() + 1, scanned.get());
 +        assertEquals(MobileTranscriptSearch.MAX_MATCHES,
 +            MobileTranscriptSearch.find(row -> "match", -1000, 0, "match").size());
 +    }
