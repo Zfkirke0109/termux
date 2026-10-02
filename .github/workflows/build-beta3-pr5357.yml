@@ -3,6 +3,7 @@ name: Build beta.3 with PR 5357
 on:
   push:
     branches: [main, feature/termux-beta3-pr5357]
+    paths: ['.github/workflows/build-beta3-pr5357.yml', 'patches/**']
   workflow_dispatch:
 
 permissions:
@@ -10,7 +11,7 @@ permissions:
 
 concurrency:
   group: beta3-pr5357-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -44,6 +45,8 @@ jobs:
           git -C "$source_dir" -c user.name='Custom Termux Builder' -c user.email='noreply@users.noreply.github.com' cherry-pick 7dd6e3fb1baee13641b08cf129b0f949c0d0e3d7
           mkdir -p termux-app downloads
           git -C "$source_dir" archive HEAD | tar -x -C termux-app
+          git apply --check patches/mobile-friendly.patch
+          git apply patches/mobile-friendly.patch
           apk=termux-app_v0.119.0-beta.3+apt-android-7-github-debug_arm64-v8a.apk
           curl --fail --location --retry 3 --output "downloads/$apk" "https://github.com/termux/termux-app/releases/download/v0.119.0-beta.3/${apk/+/%2B}"
           echo "3bb969df2400d884ccb929b7d79cc76861f291c98942c401e12408d734a460f3  downloads/$apk" | sha256sum --check
@@ -56,11 +59,13 @@ jobs:
           java-version: '11'
       - name: Identify custom build
         run: |
-          version="0.119.0-beta.3+pr5357.${GITHUB_SHA:0:7}"
+          version="0.119.0-beta.3+pr5357.mobile.${GITHUB_SHA:0:7}"
           echo "TERMUX_APP_VERSION_NAME=$version" >> "$GITHUB_ENV"
           echo "TERMUX_APK_VERSION_TAG=v$version-apt-android-7-github-debug" >> "$GITHUB_ENV"
       - name: Test terminal emulator and build signed APKs
         run: ./gradlew --no-daemon :terminal-emulator:testDebugUnitTest assembleDebug
+      - name: Test mobile actions
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
       - name: Verify shared-key signatures and generate checksums
         run: |
           set -euo pipefail
@@ -91,6 +96,8 @@ jobs:
           path: |
             termux-app/terminal-emulator/build/reports/tests/
             termux-app/terminal-emulator/build/test-results/
+            termux-app/app/build/reports/tests/
+            termux-app/app/build/test-results/
       - name: Publish verified source and arm64 APK on this branch
         working-directory: .
         run: |
@@ -101,7 +108,9 @@ jobs:
           git -C "$RUNNER_TEMP/termux-beta3-source" ls-files -z | while IFS= read -r -d '' path; do
             git add -f -- "termux-app/$path"
           done
+          git add -f termux-app/app/src/main/java/com/termux/app/terminal/MobileTerminalActions.java termux-app/app/src/main/java/com/termux/app/terminal/MobileTranscriptSearch.java termux-app/app/src/main/res/values/mobile_actions.xml termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java
           git add downloads
-          git diff --cached --check
+          # Imported upstream files retain their original whitespace. Check our seed files only.
+          git diff --cached --check -- README.md .github patches
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore: publish verified beta.3 PR 5357 source and signed arm64 APK'
           git push origin "HEAD:${GITHUB_REF_NAME}"
