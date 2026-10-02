@@ -104,6 +104,11 @@
             android:label="@string/title_activity_termux_settings"
             android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar" />
 
+        <activity android:name=".app.activities.MobileServicesActivity"
+            android:exported="false" android:resizeableActivity="true" />
+        <activity android:name=".app.activities.MobileRecoveryActivity"
+            android:exported="false" android:resizeableActivity="true" />
+
         <activity
             android:name=".shared.activities.ReportActivity"
             android:theme="@style/Theme.MarkdownViewActivity.DayNight"

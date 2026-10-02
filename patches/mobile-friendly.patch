@@ -1,39 +1,89 @@
+diff --git a/termux-app/app/src/main/AndroidManifest.xml b/termux-app/app/src/main/AndroidManifest.xml
+index 7c566c8..75a4210 100644
+--- a/termux-app/app/src/main/AndroidManifest.xml
++++ b/termux-app/app/src/main/AndroidManifest.xml
+@@ -104,6 +104,11 @@
+             android:label="@string/title_activity_termux_settings"
+             android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar" />
+ 
++        <activity android:name=".app.activities.MobileServicesActivity"
++            android:exported="false" android:resizeableActivity="true" />
++        <activity android:name=".app.activities.MobileRecoveryActivity"
++            android:exported="false" android:resizeableActivity="true" />
++
+         <activity
+             android:name=".shared.activities.ReportActivity"
+             android:theme="@style/Theme.MarkdownViewActivity.DayNight"
 diff --git a/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java b/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
-index 57de754..7ff35fb 100644
+index 57de754..2f007ee 100644
 --- a/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
 +++ b/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
-@@ -29,6 +29,7 @@ import android.widget.Toast;
+@@ -29,6 +29,12 @@ import android.widget.Toast;
  import com.termux.R;
  import com.termux.app.api.file.FileReceiverActivity;
  import com.termux.app.terminal.TermuxActivityRootView;
 +import com.termux.app.terminal.MobileTerminalActions;
++import com.termux.app.terminal.MobileDebugLogging;
++import com.termux.app.terminal.MobileRecovery;
++import com.termux.app.activities.MobileServicesActivity;
++import com.termux.app.activities.MobileRecoveryActivity;
++import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
  import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
  import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
  import com.termux.shared.activities.ReportActivity;
-@@ -188,6 +189,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+@@ -188,6 +194,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      private static final int CONTEXT_MENU_HELP_ID = 7;
      private static final int CONTEXT_MENU_SETTINGS_ID = 8;
      private static final int CONTEXT_MENU_REPORT_ID = 9;
 +    private static final int CONTEXT_MENU_SEARCH_OUTPUT = 12;
 +    private static final int CONTEXT_MENU_COPY_VISIBLE = 13;
 +    private static final int CONTEXT_MENU_JUMP_LATEST = 14;
++    private static final int CONTEXT_MENU_SERVICES = 15;
++    private static final int CONTEXT_MENU_RECOVERY = 16;
++    private static final int CONTEXT_MENU_DEBUG_LOGGING = 17;
++    private static final int REQUEST_RECOVERY = 8112;
  
      private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
      private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
-@@ -634,6 +638,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+@@ -304,6 +317,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+     @Override
+     public void onResume() {
+         super.onResume();
++        MobileDebugLogging.check(this);
+ 
+         Logger.logVerbose(LOG_TAG, "onResume");
+ 
+@@ -634,6 +648,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
          boolean autoFillEnabled = mTerminalView.isAutoFillEnabled();
  
          menu.add(Menu.NONE, CONTEXT_MENU_SELECT_URL_ID, Menu.NONE, R.string.action_select_url);
 +        menu.add(Menu.NONE, CONTEXT_MENU_SEARCH_OUTPUT, Menu.NONE, R.string.mobile_search_title);
 +        menu.add(Menu.NONE, CONTEXT_MENU_COPY_VISIBLE, Menu.NONE, R.string.mobile_copy_visible);
 +        menu.add(Menu.NONE, CONTEXT_MENU_JUMP_LATEST, Menu.NONE, R.string.mobile_jump_latest);
++        menu.add(Menu.NONE, CONTEXT_MENU_SERVICES, Menu.NONE, R.string.mobile_services_title);
++        menu.add(Menu.NONE, CONTEXT_MENU_RECOVERY, Menu.NONE, R.string.mobile_recovery_title);
++        menu.add(Menu.NONE, CONTEXT_MENU_DEBUG_LOGGING, Menu.NONE, R.string.mobile_logging_title);
          menu.add(Menu.NONE, CONTEXT_MENU_SHARE_TRANSCRIPT_ID, Menu.NONE, R.string.action_share_transcript);
          if (!DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText()))
              menu.add(Menu.NONE, CONTEXT_MENU_SHARE_SELECTED_TEXT, Menu.NONE, R.string.action_share_selected_text);
-@@ -662,6 +669,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+@@ -662,6 +682,29 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
          TerminalSession session = getCurrentSession();
  
          switch (item.getItemId()) {
++            case CONTEXT_MENU_SERVICES:
++                startActivity(new Intent(this, MobileServicesActivity.class));
++                return true;
++            case CONTEXT_MENU_RECOVERY:
++                String visible = session == null || session.getEmulator() == null ? null
++                    : session.getEmulator().getScreen().getSelectedText(0, mTerminalView.getTopRow(),
++                        session.getEmulator().mColumns - 1,
++                        mTerminalView.getTopRow() + session.getEmulator().mRows - 1, true);
++                startActivityForResult(new Intent(this, MobileRecoveryActivity.class)
++                    .putExtra(MobileRecoveryActivity.EXTRA_VISIBLE_OUTPUT, MobileRecovery.boundedCheckpoint(visible)), REQUEST_RECOVERY);
++                return true;
++            case CONTEXT_MENU_DEBUG_LOGGING:
++                showMobileLoggingDialog();
++                return true;
 +            case CONTEXT_MENU_SEARCH_OUTPUT:
 +                MobileTerminalActions.search(this, mTerminalView);
 +                return true;
@@ -46,12 +96,738 @@ index 57de754..7ff35fb 100644
              case CONTEXT_MENU_SELECT_URL_ID:
                  mTermuxTerminalViewClient.showUrlSelection();
                  return true;
+@@ -792,6 +835,22 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+     @Override
+     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+         super.onActivityResult(requestCode, resultCode, data);
++        if (requestCode == REQUEST_RECOVERY && resultCode == RESULT_OK && data != null) {
++            String id = data.getStringExtra(MobileRecoveryActivity.EXTRA_TMUX_ID);
++            if (MobileRecovery.validTmuxId(id) && mTermuxService != null && mTermuxTerminalSessionActivityClient != null) {
++                if (mTermuxService.getTermuxSessionsSize() >= 8) {
++                    showToast(getString(R.string.title_max_terminals_reached), true);
++                    return;
++                }
++                TermuxSession recovered = mTermuxService.createTermuxSession(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/tmux",
++                    new String[]{"attach-session", "-t", id}, null, TermuxConstants.TERMUX_HOME_DIR_PATH, false, "tmux " + id);
++                if (recovered != null) {
++                    mTermuxTerminalSessionActivityClient.setCurrentSession(recovered.getTerminalSession());
++                    termuxSessionListNotifyUpdated();
++                }
++            }
++            return;
++        }
+         Logger.logVerbose(LOG_TAG, "onActivityResult: requestCode: " + requestCode + ", resultCode: "  + resultCode + ", data: "  + IntentUtils.getIntentString(data));
+         if (requestCode == PermissionUtils.REQUEST_GRANT_STORAGE_PERMISSION) {
+             requestStoragePermission(true);
+@@ -813,6 +872,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+         return mNavBarHeight;
+     }
+ 
++    private void showMobileLoggingDialog() {
++        boolean timed = MobileDebugLogging.isActive(this);
++        String current = Logger.getLogLevelLabel(this, mPreferences.getLogLevel(), false);
++        new AlertDialog.Builder(this).setTitle(R.string.mobile_logging_title)
++            .setMessage(getString(timed ? R.string.mobile_logging_timed : R.string.mobile_logging_explanation, current))
++            .setPositiveButton(R.string.mobile_logging_debug, (dialog, which) -> {
++                MobileDebugLogging.start(this);
++                showToast(getString(R.string.mobile_logging_started), true);
++            })
++            .setNeutralButton(R.string.mobile_logging_normal, (dialog, which) -> {
++                MobileDebugLogging.normal(this);
++                showToast(getString(R.string.mobile_logging_normalized), true);
++            }).setNegativeButton(android.R.string.cancel, null).show();
++    }
++
+     public TermuxActivityRootView getTermuxActivityRootView() {
+         return mTermuxActivityRootView;
+     }
+diff --git a/termux-app/app/src/main/java/com/termux/app/TermuxApplication.java b/termux-app/app/src/main/java/com/termux/app/TermuxApplication.java
+index a3be612..68759c4 100644
+--- a/termux-app/app/src/main/java/com/termux/app/TermuxApplication.java
++++ b/termux-app/app/src/main/java/com/termux/app/TermuxApplication.java
+@@ -4,6 +4,7 @@ import android.app.Application;
+ import android.content.Context;
+ 
+ import com.termux.BuildConfig;
++import com.termux.app.terminal.MobileDebugLogging;
+ import com.termux.shared.errors.Error;
+ import com.termux.shared.logger.Logger;
+ import com.termux.shared.termux.TermuxBootstrap;
+@@ -31,6 +32,7 @@ public class TermuxApplication extends Application {
+ 
+         // Set log config for the app
+         setLogConfig(context);
++        MobileDebugLogging.check(context);
+ 
+         Logger.logDebug("Starting Application");
+ 
+diff --git a/termux-app/app/src/main/java/com/termux/app/activities/MobileRecoveryActivity.java b/termux-app/app/src/main/java/com/termux/app/activities/MobileRecoveryActivity.java
+new file mode 100644
+index 0000000..49190ae
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/activities/MobileRecoveryActivity.java
+@@ -0,0 +1,190 @@
++package com.termux.app.activities;
++
++import android.app.ActivityManager;
++import android.app.ApplicationExitInfo;
++import android.content.Intent;
++import android.os.Build;
++import android.os.Bundle;
++import android.os.Debug;
++import android.util.AtomicFile;
++import android.widget.Button;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.TextView;
++import android.app.AlertDialog;
++import androidx.appcompat.app.AppCompatActivity;
++import androidx.annotation.RequiresApi;
++import com.termux.R;
++import com.termux.app.terminal.MobileCommandRunner;
++import com.termux.app.terminal.MobileRecovery;
++import com.termux.shared.termux.TermuxConstants;
++import java.io.File;
++import java.io.FileOutputStream;
++import java.text.DateFormat;
++import java.util.Arrays;
++import java.util.Date;
++import java.util.List;
++
++/** Device-local, opt-in recovery assistance; a checkpoint restores text, not processes. */
++public class MobileRecoveryActivity extends AppCompatActivity {
++    public static final String EXTRA_VISIBLE_OUTPUT = "visible_output";
++    public static final String EXTRA_TMUX_ID = "tmux_id";
++    private LinearLayout content;
++    private TextView history, checkpointStatus;
++    private boolean busy;
++
++    @Override protected void onCreate(Bundle state) {
++        super.onCreate(state);
++        setTitle(R.string.mobile_recovery_title);
++        if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
++        ScrollView scroll = new ScrollView(this);
++        content = new LinearLayout(this);
++        content.setOrientation(LinearLayout.VERTICAL);
++        int padding = Math.round(16 * getResources().getDisplayMetrics().density);
++        content.setPadding(padding, padding, padding, padding);
++        scroll.addView(content);
++        setContentView(scroll);
++        text(getString(R.string.mobile_recovery_explanation));
++        history = text(getString(R.string.mobile_services_loading));
++        button(R.string.mobile_refresh, this::loadHistory);
++        checkpointStatus = text(getString(R.string.mobile_checkpoint_explanation));
++        button(R.string.mobile_checkpoint_save, this::saveCheckpoint);
++        button(R.string.mobile_checkpoint_view, this::viewCheckpoint);
++        button(R.string.mobile_checkpoint_delete, () -> new AlertDialog.Builder(this)
++            .setMessage(R.string.mobile_checkpoint_delete_confirm).setNegativeButton(android.R.string.cancel, null)
++            .setPositiveButton(R.string.mobile_checkpoint_delete, (dialog, which) -> {
++                checkpointFile().delete();
++                checkpointStatus.setText(R.string.mobile_checkpoint_deleted);
++            }).show());
++        button(R.string.mobile_tmux_reconnect, this::listTmux);
++        loadHistory();
++    }
++    @Override public boolean onSupportNavigateUp() { finish(); return true; }
++    private TextView text(String value) {
++        TextView text = new TextView(this);
++        text.setText(value);
++        text.setTextIsSelectable(true);
++        text.setPadding(0, 12, 0, 12);
++        content.addView(text);
++        return text;
++    }
++    private void button(int label, Runnable action) {
++        Button button = new Button(this);
++        button.setText(label);
++        button.setOnClickListener(v -> { if (!busy) action.run(); });
++        content.addView(button);
++    }
++    private void loadHistory() {
++        busy = true;
++        MobileCommandRunner.BACKGROUND.execute(() -> {
++            String result;
++            try {
++                Debug.MemoryInfo memory = new Debug.MemoryInfo();
++                Debug.getMemoryInfo(memory);
++                result = getString(R.string.mobile_memory_sample, memory.getTotalPss()) + "\n\n"
++                    + (Build.VERSION.SDK_INT >= 30 ? exitHistory() : getString(R.string.mobile_exit_history_unsupported));
++            } catch (RuntimeException error) { result = getString(R.string.mobile_operation_failed, error.getMessage()); }
++            String value = result;
++            runOnUiThread(() -> {
++                if (isFinishing() || isDestroyed()) return;
++                busy = false;
++                history.setText(value);
++            });
++        });
++    }
++    @RequiresApi(30) private String exitHistory() {
++        ActivityManager manager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
++        if (manager == null) return getString(R.string.mobile_exit_history_empty);
++        List<ApplicationExitInfo> exits = manager.getHistoricalProcessExitReasons(getPackageName(), 0, 8);
++        StringBuilder report = new StringBuilder(getString(R.string.mobile_exit_history_header));
++        int[] reasons = {R.string.mobile_exit_unknown, R.string.mobile_exit_self, R.string.mobile_exit_signal,
++            R.string.mobile_exit_memory, R.string.mobile_exit_crash, R.string.mobile_exit_native_crash,
++            R.string.mobile_exit_anr, R.string.mobile_exit_initialization, R.string.mobile_exit_permission,
++            R.string.mobile_exit_resource, R.string.mobile_exit_user, R.string.mobile_exit_user_stopped,
++            R.string.mobile_exit_dependency, R.string.mobile_exit_other, R.string.mobile_exit_freezer,
++            R.string.mobile_exit_package_state, R.string.mobile_exit_update, R.string.mobile_exit_memory_limiter};
++        if (exits.isEmpty()) return getString(R.string.mobile_exit_history_empty);
++        for (ApplicationExitInfo exit : exits) {
++            String description = exit.getDescription();
++            report.append("\n\n").append(DateFormat.getDateTimeInstance().format(new Date(exit.getTimestamp())))
++                .append("\n").append(getString(reasons[MobileRecovery.classifyExit(exit.getReason(), description)]))
++                .append("\n").append(getString(R.string.mobile_exit_sample, exit.getPid(), exit.getStatus(), exit.getPss(), exit.getRss()));
++            if (description != null) report.append("\n").append(description.substring(0, Math.min(1024, description.length())));
++        }
++        return report.toString();
++    }
++    private AtomicFile checkpointFile() { return new AtomicFile(new File(getFilesDir(), "mobile-visible-checkpoint.txt")); }
++    private void saveCheckpoint() {
++        String visible = getIntent().getStringExtra(EXTRA_VISIBLE_OUTPUT);
++        if (visible == null) { checkpointStatus.setText(R.string.mobile_checkpoint_no_screen); return; }
++        busy = true;
++        MobileCommandRunner.BACKGROUND.execute(() -> {
++            AtomicFile file = checkpointFile();
++            FileOutputStream stream = null;
++            String message;
++            try {
++                String saved = DateFormat.getDateTimeInstance().format(new Date()) + "\n\n" + MobileRecovery.boundedCheckpoint(visible);
++                stream = file.startWrite();
++                stream.write(saved.getBytes(java.nio.charset.StandardCharsets.UTF_8));
++                file.finishWrite(stream);
++                message = getString(R.string.mobile_checkpoint_saved);
++            } catch (Exception error) {
++                if (stream != null) file.failWrite(stream);
++                message = getString(R.string.mobile_operation_failed, error.getMessage());
++            }
++            showCheckpointStatus(message);
++        });
++    }
++    private void showCheckpointStatus(String message) {
++        runOnUiThread(() -> {
++            if (isFinishing() || isDestroyed()) return;
++            busy = false;
++            checkpointStatus.setText(message);
++        });
++    }
++    private void viewCheckpoint() {
++        busy = true;
++        MobileCommandRunner.BACKGROUND.execute(() -> {
++            try {
++                File file = checkpointFile().getBaseFile();
++                if (file.length() > 110000) throw new java.io.IOException("Checkpoint exceeds the size limit");
++                String saved = new String(checkpointFile().readFully(), java.nio.charset.StandardCharsets.UTF_8);
++                runOnUiThread(() -> {
++                    if (isFinishing() || isDestroyed()) return;
++                    busy = false;
++                    TextView text = new TextView(this);
++                    text.setText(saved);
++                    text.setTextIsSelectable(true);
++                    ScrollView scroll = new ScrollView(this);
++                    scroll.addView(text);
++                    new AlertDialog.Builder(this).setTitle(R.string.mobile_checkpoint_view).setView(scroll)
++                        .setPositiveButton(android.R.string.ok, null).show();
++                });
++            } catch (Exception error) { showCheckpointStatus(getString(R.string.mobile_checkpoint_missing)); }
++        });
++    }
++    private void listTmux() {
++        String tmux = TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/tmux";
++        if (!new File(tmux).canExecute()) { checkpointStatus.setText(R.string.mobile_tmux_install); return; }
++        busy = true;
++        MobileCommandRunner.BACKGROUND.execute(() -> {
++            try {
++                MobileCommandRunner.Result result = MobileCommandRunner.run(getApplicationContext(),
++                    Arrays.asList(tmux, "list-sessions", "-F", "#{session_id}\t#{session_name}"));
++                if (result.timedOut || result.exitCode != 0) { showCheckpointStatus(getString(R.string.mobile_tmux_none)); return; }
++                List<MobileRecovery.TmuxSession> sessions = MobileRecovery.parseTmuxSessions(result.output);
++                if (sessions.isEmpty()) { showCheckpointStatus(getString(R.string.mobile_tmux_none)); return; }
++                runOnUiThread(() -> {
++                    if (isFinishing() || isDestroyed()) return;
++                    busy = false;
++                    String[] labels = new String[sessions.size()];
++                    for (int i = 0; i < labels.length; i++) labels[i] = sessions.get(i).name + " (" + sessions.get(i).id + ")";
++                    new AlertDialog.Builder(this).setTitle(R.string.mobile_tmux_reconnect).setItems(labels, (dialog, index) -> {
++                        setResult(RESULT_OK, new Intent().putExtra(EXTRA_TMUX_ID, sessions.get(index).id));
++                        finish();
++                    }).setNegativeButton(android.R.string.cancel, null).show();
++                });
++            } catch (Exception error) { showCheckpointStatus(getString(R.string.mobile_operation_failed, error.getMessage())); }
++        });
++    }
++}
+diff --git a/termux-app/app/src/main/java/com/termux/app/activities/MobileServicesActivity.java b/termux-app/app/src/main/java/com/termux/app/activities/MobileServicesActivity.java
+new file mode 100644
+index 0000000..8d31dac
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/activities/MobileServicesActivity.java
+@@ -0,0 +1,172 @@
++package com.termux.app.activities;
++
++import android.os.Bundle;
++import android.widget.Button;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.TextView;
++import android.app.AlertDialog;
++import androidx.appcompat.app.AppCompatActivity;
++import com.termux.R;
++import com.termux.app.terminal.MobileCommandRunner;
++import com.termux.app.terminal.MobileServiceStatus;
++import com.termux.shared.termux.TermuxConstants;
++import java.io.File;
++import java.io.IOException;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.Comparator;
++import java.util.List;
++
++/** Explicit controls for existing termux-services; opening this panel never starts a service. */
++public class MobileServicesActivity extends AppCompatActivity {
++    private LinearLayout content;
++    private boolean busy;
++    private static final String BIN = TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/";
++    private static final File ROOT = new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH, "var/service");
++    private static final int MAX_SERVICES = 64;
++
++    private static final class Entry {
++        final String name;
++        final MobileServiceStatus status;
++        Entry(String name, MobileServiceStatus status) { this.name = name; this.status = status; }
++    }
++
++    @Override protected void onCreate(Bundle state) {
++        super.onCreate(state);
++        setTitle(R.string.mobile_services_title);
++        if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
++        ScrollView scroll = new ScrollView(this);
++        content = new LinearLayout(this);
++        content.setOrientation(LinearLayout.VERTICAL);
++        int padding = Math.round(16 * getResources().getDisplayMetrics().density);
++        content.setPadding(padding, padding, padding, padding);
++        scroll.addView(content);
++        setContentView(scroll);
++        refresh();
++    }
++    @Override public boolean onSupportNavigateUp() { finish(); return true; }
++
++    private TextView label(String value) {
++        TextView text = new TextView(this);
++        text.setText(value);
++        text.setTextIsSelectable(true);
++        text.setPadding(0, 12, 0, 12);
++        content.addView(text);
++        return text;
++    }
++    private void button(LinearLayout parent, int title, Runnable action) {
++        Button button = new Button(this);
++        button.setText(title);
++        button.setOnClickListener(v -> { if (!busy) action.run(); });
++        parent.addView(button, new LinearLayout.LayoutParams(0, -2, 1));
++    }
++
++    private File service(String name) throws IOException {
++        if (!MobileServiceStatus.isValidName(name)) throw new IOException("Invalid service name");
++        File file = new File(ROOT, name);
++        // Private home symlinks are supported; shared-storage service paths are excluded.
++        if (!file.getCanonicalPath().startsWith(new File(TermuxConstants.TERMUX_FILES_DIR_PATH).getCanonicalPath() + "/"))
++            throw new IOException("Service path is outside Termux's private files");
++        return file;
++    }
++
++    private void refresh() {
++        busy = true;
++        content.removeAllViews();
++        label(getString(R.string.mobile_services_loading));
++        MobileCommandRunner.BACKGROUND.execute(() -> {
++            try {
++                File[] directories = ROOT.listFiles(file -> file.isDirectory() && MobileServiceStatus.isValidName(file.getName()));
++                if (directories == null || !new File(BIN + "sv").canExecute()) {
++                    runOnUiThread(() -> showUnavailable());
++                    return;
++                }
++                Arrays.sort(directories, Comparator.comparing(File::getName));
++                int count = Math.min(directories.length, MAX_SERVICES);
++                List<String> command = new ArrayList<>(Arrays.asList(BIN + "sv", "status"));
++                for (int i = 0; i < count; i++) command.add(service(directories[i].getName()).getPath());
++                String statusOutput = count == 0 ? "" : MobileCommandRunner.run(getApplicationContext(), command).output;
++                List<Entry> entries = new ArrayList<>();
++                for (int i = 0; i < count; i++) {
++                    String name = directories[i].getName();
++                    String prefix = service(name).getPath() + ":";
++                    String status = "";
++                    for (String line : statusOutput.split("\\n")) {
++                        if (line.startsWith("run: " + prefix) || line.startsWith("down: " + prefix)) { status = line; break; }
++                    }
++                    entries.add(new Entry(name, MobileServiceStatus.parse(status, !new File(service(name), "down").exists())));
++                }
++                runOnUiThread(() -> show(entries, directories.length > MAX_SERVICES));
++            } catch (Exception error) {
++                runOnUiThread(() -> failure(error));
++            }
++        });
++    }
++    private void showUnavailable() {
++        if (isFinishing() || isDestroyed()) return;
++        busy = false;
++        content.removeAllViews();
++        label(getString(R.string.mobile_services_install));
++        addRefresh();
++    }
++    private void show(List<Entry> entries, boolean limited) {
++        if (isFinishing() || isDestroyed()) return;
++        busy = false;
++        content.removeAllViews();
++        label(getString(R.string.mobile_services_explanation));
++        if (entries.isEmpty()) label(getString(R.string.mobile_services_empty));
++        if (limited) label(getString(R.string.mobile_services_limit));
++        for (Entry entry : entries) {
++            int stateText = entry.status.pid > 0 ? R.string.mobile_service_running
++                : "stopped".equals(entry.status.state) ? R.string.mobile_service_stopped : R.string.mobile_service_unavailable;
++            label(entry.name + "\n" + getString(stateText, entry.status.pid) + "\n"
++                + getString(entry.status.startupEnabled ? R.string.mobile_startup_enabled : R.string.mobile_startup_disabled));
++            LinearLayout controls = new LinearLayout(this);
++            content.addView(controls);
++            button(controls, R.string.mobile_service_start, () -> change(entry.name, "up"));
++            button(controls, R.string.mobile_service_stop, () -> new AlertDialog.Builder(this)
++                .setMessage(getString(R.string.mobile_service_stop_confirm, entry.name))
++                .setNegativeButton(android.R.string.cancel, null)
++                .setPositiveButton(R.string.mobile_service_stop, (dialog, which) -> change(entry.name, "down")).show());
++            LinearLayout startup = new LinearLayout(this);
++            content.addView(startup);
++            button(startup, entry.status.startupEnabled ? R.string.mobile_disable_startup : R.string.mobile_enable_startup,
++                () -> change(entry.name, entry.status.startupEnabled ? "disable" : "enable"));
++        }
++        addRefresh();
++    }
++    private void addRefresh() {
++        LinearLayout row = new LinearLayout(this);
++        content.addView(row);
++        button(row, R.string.mobile_refresh, this::refresh);
++    }
++    private void change(String name, String operation) {
++        busy = true;
++        label(getString(R.string.mobile_services_loading));
++        MobileCommandRunner.BACKGROUND.execute(() -> {
++            try {
++                File directory = service(name);
++                if (!directory.isDirectory()) throw new IOException("Service was removed");
++                if ("enable".equals(operation) || "disable".equals(operation)) {
++                    File down = new File(directory, "down");
++                    if ("enable".equals(operation)) {
++                        if (down.exists() && !down.delete()) throw new IOException("Could not enable startup");
++                    } else if (!down.exists() && !down.createNewFile()) throw new IOException("Could not disable startup");
++                } else {
++                    MobileCommandRunner.Result result = MobileCommandRunner.run(getApplicationContext(),
++                        Arrays.asList(BIN + "sv", "-w", "5", operation, directory.getPath()));
++                    if (result.timedOut || result.exitCode != 0) throw new IOException(result.output.isEmpty()
++                        ? "Service command did not complete" : result.output);
++                }
++                runOnUiThread(() -> { if (!isFinishing() && !isDestroyed()) refresh(); });
++            } catch (Exception error) { runOnUiThread(() -> failure(error)); }
++        });
++    }
++    private void failure(Exception error) {
++        if (isFinishing() || isDestroyed()) return;
++        busy = false;
++        label(getString(R.string.mobile_operation_failed, error.getMessage()));
++        addRefresh();
++    }
++}
+diff --git a/termux-app/app/src/main/java/com/termux/app/fragments/settings/termux/DebuggingPreferencesFragment.java b/termux-app/app/src/main/java/com/termux/app/fragments/settings/termux/DebuggingPreferencesFragment.java
+index 8afd568..9b0be5f 100644
+--- a/termux-app/app/src/main/java/com/termux/app/fragments/settings/termux/DebuggingPreferencesFragment.java
++++ b/termux-app/app/src/main/java/com/termux/app/fragments/settings/termux/DebuggingPreferencesFragment.java
+@@ -13,6 +13,7 @@ import androidx.preference.PreferenceFragmentCompat;
+ import androidx.preference.PreferenceManager;
+ 
+ import com.termux.R;
++import com.termux.app.terminal.MobileDebugLogging;
+ import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
+ import com.termux.shared.logger.Logger;
+ 
+@@ -107,6 +108,7 @@ class DebuggingPreferencesDataStore extends PreferenceDataStore {
+         switch (key) {
+             case "log_level":
+                 if (value != null) {
++                    MobileDebugLogging.cancel(mContext);
+                     mPreferences.setLogLevel(mContext, Integer.parseInt(value));
+                 }
+                 break;
+@@ -124,6 +126,7 @@ class DebuggingPreferencesDataStore extends PreferenceDataStore {
+ 
+         switch (key) {
+             case "terminal_view_key_logging_enabled":
++                    MobileDebugLogging.cancel(mContext);
+                     mPreferences.setTerminalViewKeyLoggingEnabled(value);
+                 break;
+             case "plugin_error_notifications_enabled":
+diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileCommandRunner.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileCommandRunner.java
+new file mode 100644
+index 0000000..13d29a6
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileCommandRunner.java
+@@ -0,0 +1,91 @@
++package com.termux.app.terminal;
++
++import android.content.Context;
++import android.os.Build;
++import android.system.Os;
++import android.system.OsConstants;
++import com.termux.shared.shell.ShellUtils;
++import com.termux.shared.termux.TermuxConstants;
++import com.termux.shared.termux.shell.command.environment.TermuxShellEnvironment;
++import java.io.ByteArrayOutputStream;
++import java.io.InputStream;
++import java.io.IOException;
++import java.util.List;
++import java.util.Map;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.Future;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.ScheduledFuture;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicBoolean;
++
++/** Own-UID commands only. Call on BACKGROUND, never on the main thread. */
++public final class MobileCommandRunner {
++    public static final ExecutorService BACKGROUND = Executors.newSingleThreadExecutor();
++    private static final ExecutorService OUTPUT = Executors.newSingleThreadExecutor();
++    private static final ScheduledExecutorService DEADLINES = Executors.newSingleThreadScheduledExecutor();
++    private static final int OUTPUT_LIMIT = 65536;
++    private MobileCommandRunner() {}
++
++    public static final class Result {
++        public final int exitCode;
++        public final String output;
++        public final boolean timedOut, truncated;
++        Result(int code, String output, boolean timedOut, boolean truncated) {
++            exitCode = code; this.output = output; this.timedOut = timedOut; this.truncated = truncated;
++        }
++    }
++
++    public static Result run(Context context, List<String> arguments) throws Exception {
++        ProcessBuilder builder = new ProcessBuilder(arguments);
++        builder.directory(new java.io.File(TermuxConstants.TERMUX_HOME_DIR_PATH));
++        Map<String, String> environment = builder.environment();
++        environment.clear();
++        environment.putAll(new TermuxShellEnvironment().getEnvironment(context, false));
++        builder.redirectErrorStream(true);
++        Process process = builder.start();
++        AtomicBoolean timedOut = new AtomicBoolean(), truncated = new AtomicBoolean();
++        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
++        InputStream stream = process.getInputStream();
++        ScheduledFuture<?> deadline = DEADLINES.schedule(() -> {
++            timedOut.set(true);
++            try {
++                process.exitValue(); // If it exited, only close a pipe inherited by descendants.
++            } catch (IllegalThreadStateException running) {
++                if (Build.VERSION.SDK_INT >= 26) process.destroyForcibly();
++                else {
++                    int pid = ShellUtils.getPid(process);
++                    if (pid > 0) {
++                        try { Os.kill(pid, OsConstants.SIGKILL); } catch (Exception ignored) {}
++                    }
++                    process.destroy();
++                }
++            }
++            try { stream.close(); } catch (IOException ignored) {}
++        }, 8, TimeUnit.SECONDS);
++        Future<?> reader = OUTPUT.submit(() -> {
++            byte[] buffer = new byte[4096];
++            try {
++                int length;
++                while ((length = stream.read(buffer)) != -1) {
++                    int keep = Math.min(length, OUTPUT_LIMIT - bytes.size());
++                    if (keep > 0) bytes.write(buffer, 0, keep);
++                    if (keep != length) truncated.set(true);
++                }
++            } catch (IOException ignored) { /* watchdog or process exit */ }
++        });
++        try {
++            process.getOutputStream().close();
++            int code = process.waitFor();
++            // Keep the deadline armed while descendants may still hold the pipe open.
++            reader.get(9, TimeUnit.SECONDS);
++            return new Result(code, bytes.toString("UTF-8"), timedOut.get(), truncated.get());
++        } finally {
++            deadline.cancel(false);
++            process.destroy();
++            stream.close();
++            reader.cancel(true);
++        }
++    }
++}
+diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileDebugLogging.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileDebugLogging.java
+new file mode 100644
+index 0000000..670a9c8
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileDebugLogging.java
+@@ -0,0 +1,63 @@
++package com.termux.app.terminal;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.SystemClock;
++import com.termux.shared.logger.Logger;
++import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
++
++/** An opt-in debug interval, checked both in-process and after a process restart/reboot. */
++public final class MobileDebugLogging {
++    public static final long DURATION_MS = 15 * 60 * 1000;
++    private static final String PREFS = "mobile_debug_logging";
++    private static final Handler TIMER = new Handler(Looper.getMainLooper());
++    private static Runnable expiry;
++    private MobileDebugLogging() {}
++
++    public static void start(Context context) {
++        Context app = context.getApplicationContext();
++        TermuxAppSharedPreferences preferences = TermuxAppSharedPreferences.build(app);
++        if (preferences == null) return;
++        cancel(app);
++        preferences.setTerminalViewKeyLoggingEnabled(false);
++        preferences.setLogLevel(null, Logger.LOG_LEVEL_DEBUG);
++        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
++            .putLong("start_wall", System.currentTimeMillis()).putLong("start_elapsed", SystemClock.elapsedRealtime())
++            .putBoolean("active", true).apply();
++        check(app);
++    }
++    public static void normal(Context context) {
++        cancel(context);
++        TermuxAppSharedPreferences preferences = TermuxAppSharedPreferences.build(context);
++        if (preferences != null) {
++            preferences.setLogLevel(null, Logger.LOG_LEVEL_NORMAL);
++            preferences.setTerminalViewKeyLoggingEnabled(false);
++        }
++    }
++    public static void cancel(Context context) {
++        if (expiry != null) TIMER.removeCallbacks(expiry);
++        expiry = null;
++        context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply();
++    }
++    public static boolean isActive(Context context) {
++        check(context);
++        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("active", false);
++    }
++    public static void check(Context context) {
++        Context app = context.getApplicationContext();
++        SharedPreferences timer = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
++        if (!timer.getBoolean("active", false)) return;
++        TermuxAppSharedPreferences preferences = TermuxAppSharedPreferences.build(app);
++        if (preferences == null) return;
++        if (preferences.getLogLevel() != Logger.LOG_LEVEL_DEBUG) { cancel(app); return; }
++        long wall = System.currentTimeMillis(), elapsed = SystemClock.elapsedRealtime();
++        long startWall = timer.getLong("start_wall", 0), startElapsed = timer.getLong("start_elapsed", 0);
++        if (MobileDebugPolicy.hasExpired(wall, elapsed, startWall, startElapsed, DURATION_MS)) { normal(app); return; }
++        if (expiry != null) TIMER.removeCallbacks(expiry);
++        long remaining = Math.min(DURATION_MS - (elapsed - startElapsed), DURATION_MS - (wall - startWall));
++        expiry = () -> check(app);
++        TIMER.postDelayed(expiry, remaining);
++    }
++}
+diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileDebugPolicy.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileDebugPolicy.java
+new file mode 100644
+index 0000000..28ad2a0
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileDebugPolicy.java
+@@ -0,0 +1,12 @@
++package com.termux.app.terminal;
++
++/** Pure clock policy; changing a device clock or rebooting cannot prolong debug logging. */
++public final class MobileDebugPolicy {
++    private MobileDebugPolicy() {}
++    public static boolean hasExpired(long nowWall, long nowElapsed, long startWall, long startElapsed, long duration) {
++        long bootDelta = (nowWall - nowElapsed) - (startWall - startElapsed);
++        return duration <= 0 || nowElapsed < startElapsed || nowWall < startWall
++            || Math.abs(bootDelta) > 5000
++            || nowElapsed - startElapsed >= duration || nowWall - startWall >= duration;
++    }
++}
+diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileRecovery.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileRecovery.java
+new file mode 100644
+index 0000000..0708b56
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileRecovery.java
+@@ -0,0 +1,36 @@
++package com.termux.app.terminal;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/** Value parsing only; no historical command is ever replayed. */
++public final class MobileRecovery {
++    private MobileRecovery() {}
++    public static int classifyExit(int reason, String description) {
++        // API 37 reports OTHER + description; newer SDK extensions have reason 17.
++        if (reason == 17 || (reason == 13 && description != null && description.contains("MemoryLimiter"))) return 17;
++        return reason >= 0 && reason <= 17 ? reason : 0;
++    }
++    public static boolean validTmuxId(String id) { return id != null && id.matches("\\$[0-9]{1,10}"); }
++    public static final class TmuxSession {
++        public final String id, name;
++        TmuxSession(String id, String name) { this.id = id; this.name = name; }
++    }
++    public static List<TmuxSession> parseTmuxSessions(String output) {
++        List<TmuxSession> sessions = new ArrayList<>();
++        for (String line : output.split("\\n")) {
++            int tab = line.indexOf('\t');
++            if (tab < 0 || !validTmuxId(line.substring(0, tab))) continue;
++            sessions.add(new TmuxSession(line.substring(0, tab), line.substring(tab + 1,
++                Math.min(line.length(), tab + 81)).replaceAll("[\\p{Cntrl}]", " ")));
++            if (sessions.size() == 32) break;
++        }
++        return sessions;
++    }
++    public static String boundedCheckpoint(String text) {
++        if (text == null) return "";
++        int end = Math.min(text.length(), 25000);
++        if (end > 0 && end < text.length() && Character.isHighSurrogate(text.charAt(end - 1))) end--;
++        return text.substring(0, end);
++    }
++}
+diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileServiceStatus.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileServiceStatus.java
+new file mode 100644
+index 0000000..7005ce2
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileServiceStatus.java
+@@ -0,0 +1,27 @@
++package com.termux.app.terminal;
++
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++/** Parse only the primary service status, not its logger's PID. */
++public final class MobileServiceStatus {
++    private static final Pattern PID = Pattern.compile("^run: .*?: \\(pid ([0-9]+)\\)");
++    public final String state;
++    public final int pid;
++    public final boolean startupEnabled;
++    private MobileServiceStatus(String state, int pid, boolean startupEnabled) {
++        this.state = state; this.pid = pid; this.startupEnabled = startupEnabled;
++    }
++    public static boolean isValidName(String name) {
++        return name != null && name.matches("[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}");
++    }
++    public static MobileServiceStatus parse(String output, boolean startupEnabled) {
++        Matcher matcher = PID.matcher(output);
++        if (matcher.find()) {
++            try { return new MobileServiceStatus("running", Integer.parseInt(matcher.group(1)), startupEnabled); }
++            catch (NumberFormatException ignored) {}
++        }
++        String state = output.startsWith("down:") ? "stopped" : "unavailable";
++        return new MobileServiceStatus(state, -1, startupEnabled);
++    }
++}
 diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileTerminalActions.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileTerminalActions.java
 new file mode 100644
-index 0000000..97afcf4
+index 0000000..41701b7
 --- /dev/null
 +++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileTerminalActions.java
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,173 @@
 +package com.termux.app.terminal;
 +
 +import android.app.Activity;
@@ -60,6 +836,11 @@ index 0000000..97afcf4
 +import android.text.InputType;
 +import android.widget.EditText;
 +import android.widget.Toast;
++import android.view.WindowManager;
++import android.view.inputmethod.EditorInfo;
++import android.view.inputmethod.InputMethodManager;
++import android.content.Context;
++import com.termux.terminal.WcWidth;
 +
 +import com.termux.R;
 +import com.termux.shared.interact.ShareUtils;
@@ -97,54 +878,142 @@ index 0000000..97afcf4
 +        EditText input = new EditText(activity);
 +        input.setSingleLine(true);
 +        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
++        input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
 +        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(256)});
 +        input.setHint(R.string.mobile_search_hint);
-+        new AlertDialog.Builder(activity).setTitle(R.string.mobile_search_title).setView(input)
++        AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(R.string.mobile_search_title).setView(input)
 +            .setNegativeButton(android.R.string.cancel, null)
-+            .setPositiveButton(R.string.mobile_search_button, (dialog, which) -> {
-+                if (view.getCurrentSession() != session || session.getEmulator() != emulator) return;
-+                List<MobileTranscriptSearch.Match> matches = MobileTranscriptSearch.find(
-+                    row -> emulator.getScreen().getSelectedText(0, row, emulator.mColumns - 1, row, false),
-+                    -emulator.getScreen().getActiveTranscriptRows(), emulator.mRows - 1, input.getText().toString());
-+                if (matches.isEmpty()) {
-+                    Toast.makeText(activity, R.string.mobile_search_no_matches, Toast.LENGTH_LONG).show();
-+                    return;
-+                }
-+                String[] labels = new String[matches.size()];
-+                for (int i = 0; i < labels.length; i++) {
-+                    MobileTranscriptSearch.Match match = matches.get(i);
-+                    labels[i] = activity.getString(R.string.mobile_search_row, match.row) + " "
-+                        + match.text.substring(0, Math.min(160, match.text.length()));
-+                }
-+                new AlertDialog.Builder(activity).setTitle(R.string.mobile_search_results)
-+                    .setItems(labels, (results, index) -> {
-+                        MobileTranscriptSearch.Match match = matches.get(index);
-+                        if (view.getCurrentSession() != session || session.getEmulator() != emulator
-+                            || match.row < -emulator.getScreen().getActiveTranscriptRows()
-+                            || !match.text.equals(emulator.getScreen().getSelectedText(0, match.row,
-+                                emulator.mColumns - 1, match.row, false))) {
-+                            Toast.makeText(activity, R.string.mobile_search_changed, Toast.LENGTH_LONG).show();
-+                            return;
-+                        }
-+                        view.stopTextSelectionMode();
-+                        view.setTopRow(Math.min(0, match.row));
-+                        view.onScreenUpdated(true);
-+                    }).setNegativeButton(android.R.string.cancel, null).show();
-+            }).show();
++            .setPositiveButton(R.string.mobile_search_button, null).create();
++        Runnable submit = () -> {
++            if (view.getCurrentSession() != session || session.getEmulator() != emulator) {
++                dialog.dismiss();
++                return;
++            }
++            String query = input.getText().toString();
++            if (query.isEmpty()) { input.setError(activity.getString(R.string.mobile_search_hint)); return; }
++            MobileTranscriptSearch.Rows rows = rows(emulator);
++            List<MobileTranscriptSearch.Match> matches = MobileTranscriptSearch.find(rows,
++                -emulator.getScreen().getActiveTranscriptRows(), emulator.mRows - 1, query);
++            InputMethodManager keyboard = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
++            if (keyboard != null) keyboard.hideSoftInputFromWindow(input.getWindowToken(), 0);
++            dialog.dismiss();
++            if (matches.isEmpty()) {
++                Toast.makeText(activity, R.string.mobile_search_no_matches, Toast.LENGTH_LONG).show();
++            } else {
++                showMatches(activity, view, session, emulator, rows, matches);
++            }
++        };
++        dialog.setOnShowListener(ignored -> {
++            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> submit.run());
++            input.requestFocus();
++            if (dialog.getWindow() != null) dialog.getWindow().setSoftInputMode(
++                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
++            input.post(() -> {
++                InputMethodManager keyboard = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
++                if (keyboard != null) keyboard.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
++            });
++        });
++        input.setOnEditorActionListener((v, action, event) -> {
++            if (action != EditorInfo.IME_ACTION_SEARCH) return false;
++            submit.run();
++            return true;
++        });
++        dialog.show();
++    }
++
++    private static MobileTranscriptSearch.Rows rows(TerminalEmulator emulator) {
++        return new MobileTranscriptSearch.Rows() {
++            public String textAt(int row) {
++                return emulator.getScreen().getSelectedText(0, row, emulator.mColumns - 1, row, false);
++            }
++            public boolean wrapsAt(int row) { return emulator.getScreen().getLineWrap(row); }
++        };
++    }
++
++    private static void showMatches(Activity activity, TerminalView view, TerminalSession session,
++                                    TerminalEmulator emulator, MobileTranscriptSearch.Rows rows,
++                                    List<MobileTranscriptSearch.Match> matches) {
++        int[] selected = {0};
++        String[] labels = new String[matches.size()];
++        for (int i = 0; i < labels.length; i++) {
++            MobileTranscriptSearch.Match match = matches.get(i);
++            labels[i] = activity.getString(R.string.mobile_search_row, match.row) + " " + match.text;
++        }
++        AlertDialog results = new AlertDialog.Builder(activity).setTitle(R.string.mobile_search_results)
++            .setSingleChoiceItems(labels, 0, (dialog, index) -> selected[0] = index)
++            .setNegativeButton(R.string.mobile_search_close, null)
++            .setNeutralButton(R.string.mobile_search_previous, null)
++            .setPositiveButton(R.string.mobile_search_next, null).create();
++        Runnable jump = () -> {
++            MobileTranscriptSearch.Match match = matches.get(selected[0]);
++            if (view.getCurrentSession() != session || session.getEmulator() != emulator
++                || !match.isCurrent(rows, -emulator.getScreen().getActiveTranscriptRows(), emulator.mRows - 1)) {
++                view.clearSearchHighlight();
++                Toast.makeText(activity, R.string.mobile_search_changed, Toast.LENGTH_LONG).show();
++                results.dismiss();
++                return;
++            }
++            view.stopTextSelectionMode();
++            view.setTopRow(Math.min(0, match.row));
++            view.onScreenUpdated(true);
++            view.setSearchHighlight(match.row, match.endRow,
++                columnForIndex(rows.textAt(match.row), match.startIndex, false),
++                columnForIndex(rows.textAt(match.endRow), match.endIndex, true));
++            results.setTitle(activity.getString(R.string.mobile_search_position, selected[0] + 1, matches.size()));
++        };
++        results.setOnShowListener(ignored -> {
++            // Keep the terminal and its highlight visible behind the navigation panel.
++            if (results.getWindow() != null) {
++                results.getWindow().setDimAmount(0.15f);
++                results.getWindow().setGravity(android.view.Gravity.BOTTOM);
++                results.getWindow().setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
++                    Math.round(activity.getResources().getDisplayMetrics().heightPixels * 0.42f));
++            }
++            results.getListView().setOnItemClickListener((parent, item, position, id) -> {
++                selected[0] = position;
++                jump.run();
++            });
++            results.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
++                selected[0] = (selected[0] + 1) % matches.size();
++                results.getListView().setItemChecked(selected[0], true);
++                results.getListView().smoothScrollToPosition(selected[0]);
++                jump.run();
++            });
++            results.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
++                selected[0] = (selected[0] + matches.size() - 1) % matches.size();
++                results.getListView().setItemChecked(selected[0], true);
++                results.getListView().smoothScrollToPosition(selected[0]);
++                jump.run();
++            });
++            jump.run();
++        });
++        results.show();
++    }
++
++    static int columnForIndex(String text, int index, boolean endExclusive) {
++        int column = 0;
++        for (int i = 0; i < index && i < text.length();) {
++            int codePoint = text.codePointAt(i);
++            column += Math.max(0, WcWidth.width(codePoint));
++            i += Character.charCount(codePoint);
++        }
++        if (endExclusive || (index < text.length() && WcWidth.width(text.codePointAt(index)) == 0)) column--;
++        return Math.max(0, column);
 +    }
 +}
 diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileTranscriptSearch.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileTranscriptSearch.java
 new file mode 100644
-index 0000000..28a48a3
+index 0000000..21de2ef
 --- /dev/null
 +++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileTranscriptSearch.java
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,104 @@
 +package com.termux.app.terminal;
 +
 +import java.util.ArrayList;
++import java.util.Collections;
 +import java.util.List;
 +
-+/** Bounded literal search; does not copy the entire scrollback or execute shell commands. */
++/** Bounded literal search over logical lines, with visual positions for highlighting. */
 +public final class MobileTranscriptSearch {
 +    public static final int MAX_ROWS = 2000;
 +    public static final int MAX_CHARACTERS = 250000;
@@ -152,67 +1021,364 @@ index 0000000..28a48a3
 +
 +    public interface Rows {
 +        String textAt(int row);
++        default boolean wrapsAt(int row) { return false; }
++    }
++
++    private static final class Row {
++        final int number;
++        final String text;
++        final boolean wraps;
++        Row(int number, String text, boolean wraps) {
++            this.number = number;
++            this.text = text;
++            this.wraps = wraps;
++        }
 +    }
 +
 +    public static final class Match {
-+        public final int row;
++        public final int row, endRow, startIndex, endIndex;
 +        public final String text;
++        private final List<Row> snapshot;
 +
-+        Match(int row, String text) {
-+            this.row = row;
++        private Match(List<Row> line, int start, int end, String text) {
++            int base = 0, startRow = 0, endRowIndex = 0, first = 0, last = 0;
++            for (int i = 0; i < line.size(); i++) {
++                Row r = line.get(i);
++                if (start >= base && start < base + r.text.length()) {
++                    startRow = i;
++                    first = start - base;
++                }
++                if (end > base && end <= base + r.text.length()) {
++                    endRowIndex = i;
++                    last = end - base;
++                    break;
++                }
++                base += r.text.length();
++            }
++            row = line.get(startRow).number;
++            endRow = line.get(endRowIndex).number;
++            startIndex = first;
++            endIndex = last;
 +            this.text = text;
++            snapshot = new ArrayList<>(line.subList(startRow, endRowIndex + 1));
++        }
++
++        /** Never jump using positions from a changed or evicted transcript. */
++        public boolean isCurrent(Rows rows, int oldest, int newest) {
++            if (row < oldest || endRow > newest) return false;
++            for (Row r : snapshot) {
++                if (!r.text.equals(rows.textAt(r.number)) || r.wraps != rows.wrapsAt(r.number)) return false;
++            }
++            return true;
 +        }
 +    }
 +
 +    private MobileTranscriptSearch() {}
 +
-+    /** Newest visual rows first. Wrapped lines are searched independently. */
++    /** Newest occurrences first. Soft wraps join; hard newlines never join. */
 +    public static List<Match> find(Rows rows, int oldestRow, int newestRow, String query) {
 +        List<Match> matches = new ArrayList<>();
-+        if (query == null || query.isEmpty() || query.length() > 256 || query.indexOf('\n') >= 0)
-+            return matches;
++        if (query == null || query.isEmpty() || query.length() > 256
++            || query.indexOf('\n') >= 0 || query.indexOf('\r') >= 0) return matches;
++        List<Row> recent = new ArrayList<>();
 +        int characters = 0;
-+        int count = 0;
-+        for (int row = newestRow; row >= oldestRow && count < MAX_ROWS; row--, count++) {
++        for (int row = newestRow, count = 0; row >= oldestRow && count < MAX_ROWS; row--, count++) {
 +            String text = rows.textAt(row);
-+            if (text == null) continue;
++            if (text == null) text = "";
 +            if (text.length() > MAX_CHARACTERS - characters) break;
 +            characters += text.length();
-+            for (int offset = 0; offset <= text.length() - query.length(); offset++) {
++            recent.add(new Row(row, text, rows.wrapsAt(row)));
++            if (row == Integer.MIN_VALUE) break;
++        }
++        Collections.reverse(recent);
++        int end = recent.size();
++        while (end > 0 && matches.size() < MAX_MATCHES) {
++            int start = end - 1;
++            while (start > 0 && recent.get(start - 1).wraps) start--;
++            List<Row> line = recent.subList(start, end);
++            StringBuilder builder = new StringBuilder();
++            for (Row r : line) builder.append(r.text);
++            String text = builder.toString();
++            for (int offset = text.length() - query.length(); offset >= 0; offset--) {
 +                if (text.regionMatches(true, offset, query, 0, query.length())) {
-+                    matches.add(new Match(row, text));
-+                    break;
++                    matches.add(new Match(line, offset, offset + query.length(),
++                        text.substring(Math.max(0, offset - 40), Math.min(text.length(), offset + query.length() + 80))));
++                    if (matches.size() == MAX_MATCHES) break;
 +                }
 +            }
-+            if (matches.size() == MAX_MATCHES) break;
++            end = start;
 +        }
 +        return matches;
 +    }
 +}
 diff --git a/termux-app/app/src/main/res/values/mobile_actions.xml b/termux-app/app/src/main/res/values/mobile_actions.xml
 new file mode 100644
-index 0000000..84eb14e
+index 0000000..ac8bd00
 --- /dev/null
 +++ b/termux-app/app/src/main/res/values/mobile_actions.xml
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,78 @@
 +<resources>
 +    <string name="mobile_search_title">Search recent output</string>
 +    <string name="mobile_search_hint">Literal text, case-insensitive</string>
 +    <string name="mobile_search_button">Search</string>
-+    <string name="mobile_search_results">Matching rows (newest first)</string>
++    <string name="mobile_search_results">Matches (newest first)</string>
++    <string name="mobile_search_position">Match %1$d of %2$d</string>
++    <string name="mobile_search_previous">Previous</string>
++    <string name="mobile_search_next">Next</string>
++    <string name="mobile_search_close">Close</string>
 +    <string name="mobile_search_no_matches">No match in the recent search window (up to 2,000 rows / 250,000 characters).</string>
 +    <string name="mobile_search_changed">Output changed. Search again to locate this text safely.</string>
 +    <string name="mobile_search_row">Row %1$d:</string>
 +    <string name="mobile_copy_visible">Copy visible output</string>
 +    <string name="mobile_screen_copied">Visible output copied</string>
 +    <string name="mobile_jump_latest">Jump to latest output</string>
++    <string name="mobile_services_title">Services</string>
++    <string name="mobile_services_loading">Checking…</string>
++    <string name="mobile_services_install">Install termux-services with pkg install termux-services, then restart a shell to start its supervisor.</string>
++    <string name="mobile_services_explanation">Current state and startup policy are separate. Startup changes apply the next time the supervisor starts. Use Start or Stop to change the current state.</string>
++    <string name="mobile_services_empty">No configured services found.</string>
++    <string name="mobile_services_limit">Showing the first 64 services.</string>
++    <string name="mobile_service_running">Running · PID %1$d</string>
++    <string name="mobile_service_stopped">Stopped</string>
++    <string name="mobile_service_unavailable">Supervisor unavailable</string>
++    <string name="mobile_startup_enabled">Startup enabled</string>
++    <string name="mobile_startup_disabled">Startup disabled</string>
++    <string name="mobile_service_start">Start</string>
++    <string name="mobile_service_stop">Stop</string>
++    <string name="mobile_service_stop_confirm">Stop %1$s? Active connections and jobs using this service may end.</string>
++    <string name="mobile_enable_startup">Enable startup</string>
++    <string name="mobile_disable_startup">Disable startup</string>
++    <string name="mobile_refresh">Refresh</string>
++    <string name="mobile_operation_failed">Could not complete this action: %1$s</string>
++    <string name="mobile_recovery_title">Recovery and diagnostics</string>
++    <string name="mobile_recovery_explanation">Review recent Android exit records and reconnect to a surviving tmux session. Records may describe earlier updates or shutdowns. Android does not report every shell exit.</string>
++    <string name="mobile_memory_sample">Current app PSS: %1$d KiB. Child-process memory is separate.</string>
++    <string name="mobile_exit_history_header">Recent Android process exits. Memory figures are the last sampled values, not exact values at exit.</string>
++    <string name="mobile_exit_history_empty">Android has no recent exit records for Termux.</string>
++    <string name="mobile_exit_history_unsupported">Android exit history requires Android 11 or later.</string>
++    <string name="mobile_exit_sample">PID %1$d · status/signal %2$d · sampled PSS %3$d KiB · RSS %4$d KiB</string>
++    <string name="mobile_exit_unknown">Unknown exit reason</string>
++    <string name="mobile_exit_self">Process exited itself</string>
++    <string name="mobile_exit_signal">Process ended by a signal</string>
++    <string name="mobile_exit_memory">System low-memory kill</string>
++    <string name="mobile_exit_crash">Java crash</string>
++    <string name="mobile_exit_native_crash">Native crash</string>
++    <string name="mobile_exit_anr">App not responding</string>
++    <string name="mobile_exit_initialization">Initialization failed</string>
++    <string name="mobile_exit_permission">Permission changed</string>
++    <string name="mobile_exit_resource">Excessive resource use</string>
++    <string name="mobile_exit_user">User-requested stop (also used for updates on older Android versions)</string>
++    <string name="mobile_exit_user_stopped">User stopped</string>
++    <string name="mobile_exit_dependency">Dependency ended</string>
++    <string name="mobile_exit_other">Other Android or vendor-reported exit</string>
++    <string name="mobile_exit_freezer">App freezer kill</string>
++    <string name="mobile_exit_package_state">Package state changed</string>
++    <string name="mobile_exit_update">App updated</string>
++    <string name="mobile_exit_memory_limiter">Android memory limit exceeded</string>
++    <string name="mobile_checkpoint_explanation">Save one private checkpoint of the visible output (up to 25,000 characters). It may include sensitive terminal text. Saving replaces the previous checkpoint. Programs and process state are not saved.</string>
++    <string name="mobile_checkpoint_save">Save visible checkpoint</string>
++    <string name="mobile_checkpoint_view">View checkpoint</string>
++    <string name="mobile_checkpoint_delete">Delete checkpoint</string>
++    <string name="mobile_checkpoint_delete_confirm">Delete the saved visible-output checkpoint?</string>
++    <string name="mobile_checkpoint_deleted">Checkpoint deleted.</string>
++    <string name="mobile_checkpoint_no_screen">No terminal output is available to save.</string>
++    <string name="mobile_checkpoint_saved">Visible output saved privately. Process state was not saved.</string>
++    <string name="mobile_checkpoint_missing">No readable checkpoint is available.</string>
++    <string name="mobile_tmux_reconnect">Reconnect to tmux</string>
++    <string name="mobile_tmux_install">Install tmux with pkg install tmux to use reconnect.</string>
++    <string name="mobile_tmux_none">No surviving tmux session was found on the default server. If Android killed the server or the device rebooted, it cannot be reconnected.</string>
++    <string name="mobile_logging_title">Debug logging</string>
++    <string name="mobile_logging_explanation">Current level: %1$s. Enable Debug for 15 minutes, then automatically return to Normal. Command details may be logged; key logging stays off. Manual changes in Settings cancel the timer.</string>
++    <string name="mobile_logging_timed">Current level: %1$s. Timed debugging is active and will return to Normal after its 15-minute interval. Manual changes in Settings cancel the timer.</string>
++    <string name="mobile_logging_debug">Debug for 15 minutes</string>
++    <string name="mobile_logging_normal">Normal now</string>
++    <string name="mobile_logging_started">Debug logging enabled for 15 minutes.</string>
++    <string name="mobile_logging_normalized">Normal logging restored; key logging is off.</string>
 +</resources>
+diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileControlsUiTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileControlsUiTest.java
+new file mode 100644
+index 0000000..1fc56f2
+--- /dev/null
++++ b/termux-app/app/src/test/java/com/termux/app/terminal/MobileControlsUiTest.java
+@@ -0,0 +1,82 @@
++package com.termux.app.terminal;
++
++import android.app.Application;
++import android.content.Context;
++import android.view.ContextThemeWrapper;
++import android.view.View;
++import android.widget.TextView;
++import com.termux.R;
++import com.termux.shared.termux.extrakeys.ExtraKeysConstants;
++import com.termux.shared.termux.extrakeys.ExtraKeysInfo;
++import com.termux.shared.termux.extrakeys.ExtraKeysView;
++import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
++import com.termux.shared.logger.Logger;
++import org.junit.After;
++import org.junit.Before;
++import org.junit.Test;
++import org.junit.runner.RunWith;
++import org.robolectric.RobolectricTestRunner;
++import org.robolectric.RuntimeEnvironment;
++import org.robolectric.annotation.Config;
++import static org.junit.Assert.*;
++
++@RunWith(RobolectricTestRunner.class)
++@Config(sdk = 28, application = Application.class)
++public class MobileControlsUiTest {
++    private Context context;
++    @Before public void setup() {
++        context = RuntimeEnvironment.getApplication();
++        MobileDebugLogging.normal(context);
++    }
++    @After public void cleanup() { MobileDebugLogging.normal(context); }
++
++    @Test public void narrowExtraKeysKeepLabelsOnOneLineAndPreserveKeyCodes() throws Exception {
++        Context theme = new ContextThemeWrapper(context, R.style.Theme_TermuxApp_DayNight_DarkActionBar);
++        ExtraKeysView keys = new ExtraKeysView(theme, null);
++        ExtraKeysInfo info = new ExtraKeysInfo("[['SHIFT','PGUP','PGDN']]", "none", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
++        keys.reload(info, 48);
++        keys.measure(View.MeasureSpec.makeMeasureSpec(240, View.MeasureSpec.EXACTLY),
++            View.MeasureSpec.makeMeasureSpec(64, View.MeasureSpec.EXACTLY));
++        keys.layout(0, 0, 240, 64);
++        for (int i = 0; i < 3; i++) {
++            TextView button = (TextView) keys.getChildAt(i);
++            assertEquals(1, button.getMaxLines());
++            assertEquals(info.getMatrix()[0][i].getDisplay(), button.getContentDescription());
++            assertNotNull(button.getLayout());
++            assertEquals(1, button.getLayout().getLineCount());
++        }
++        assertEquals("SHIFT", info.getMatrix()[0][0].getKey());
++        assertEquals("PGUP", info.getMatrix()[0][1].getKey());
++        assertEquals("PGDN", info.getMatrix()[0][2].getKey());
++    }
++
++    @Test public void highlightColumnsAccountForWideAndCombiningCharacters() {
++        assertEquals(2, MobileTerminalActions.columnForIndex("終error", 1, false));
++        assertEquals(1, MobileTerminalActions.columnForIndex("終error", 1, true));
++        assertEquals(0, MobileTerminalActions.columnForIndex("a\u0301b", 1, false));
++        assertEquals(0, MobileTerminalActions.columnForIndex("a\u0301b", 2, true));
++        assertEquals(2, MobileTerminalActions.columnForIndex("😀error", 2, false));
++    }
++
++    @Test public void timedDebuggingNeverEnablesKeyLoggingAndNormalEndsIt() {
++        TermuxAppSharedPreferences preferences = TermuxAppSharedPreferences.build(context);
++        assertNotNull(preferences);
++        preferences.setTerminalViewKeyLoggingEnabled(true);
++        MobileDebugLogging.start(context);
++        assertEquals(Logger.LOG_LEVEL_DEBUG, preferences.getLogLevel());
++        assertFalse(preferences.isTerminalViewKeyLoggingEnabled());
++        assertTrue(MobileDebugLogging.isActive(context));
++        MobileDebugLogging.normal(context);
++        assertEquals(Logger.LOG_LEVEL_NORMAL, preferences.getLogLevel());
++        assertFalse(MobileDebugLogging.isActive(context));
++    }
++
++    @Test public void manualLogLevelOverridesArePreserved() {
++        TermuxAppSharedPreferences preferences = TermuxAppSharedPreferences.build(context);
++        MobileDebugLogging.start(context);
++        preferences.setLogLevel(null, Logger.LOG_LEVEL_VERBOSE);
++        MobileDebugLogging.check(context);
++        assertFalse(MobileDebugLogging.isActive(context));
++        assertEquals(Logger.LOG_LEVEL_VERBOSE, preferences.getLogLevel());
++    }
++}
+diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileDebugPolicyTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileDebugPolicyTest.java
+new file mode 100644
+index 0000000..15c6f7a
+--- /dev/null
++++ b/termux-app/app/src/test/java/com/termux/app/terminal/MobileDebugPolicyTest.java
+@@ -0,0 +1,19 @@
++package com.termux.app.terminal;
++import org.junit.Test;
++import static org.junit.Assert.*;
++public class MobileDebugPolicyTest {
++    private static final long WALL = 10000000, ELAPSED = 2000000, DURATION = 900000;
++    @Test public void expiresAtTheDeadline() {
++        assertFalse(MobileDebugPolicy.hasExpired(WALL + DURATION - 1, ELAPSED + DURATION - 1, WALL, ELAPSED, DURATION));
++        assertTrue(MobileDebugPolicy.hasExpired(WALL + DURATION, ELAPSED + DURATION, WALL, ELAPSED, DURATION));
++    }
++    @Test public void rebootAndClockChangesCannotExtendDebugging() {
++        assertTrue(MobileDebugPolicy.hasExpired(WALL + 100000, 1000, WALL, ELAPSED, DURATION));
++        assertTrue(MobileDebugPolicy.hasExpired(WALL - 100, ELAPSED + 100, WALL, ELAPSED, DURATION));
++        assertTrue(MobileDebugPolicy.hasExpired(WALL + 100000, ELAPSED + 100, WALL, ELAPSED, DURATION));
++        assertTrue(MobileDebugPolicy.hasExpired(WALL, ELAPSED, WALL, ELAPSED, 0));
++    }
++    @Test public void smallClockCorrectionsKeepTheOriginalElapsedDeadline() {
++        assertFalse(MobileDebugPolicy.hasExpired(WALL + 1001, ELAPSED + 1000, WALL, ELAPSED, DURATION));
++    }
++}
+diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileRecoveryTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileRecoveryTest.java
+new file mode 100644
+index 0000000..1d27a9a
+--- /dev/null
++++ b/termux-app/app/src/test/java/com/termux/app/terminal/MobileRecoveryTest.java
+@@ -0,0 +1,27 @@
++package com.termux.app.terminal;
++import org.junit.Test;
++import static org.junit.Assert.*;
++public class MobileRecoveryTest {
++    @Test public void distinguishesMemoryLimitsFromCrashesAndUpdates() {
++        assertEquals(17, MobileRecovery.classifyExit(13, "MemoryLimiter:AnonSwap limit exceeded"));
++        assertEquals(17, MobileRecovery.classifyExit(17, null));
++        assertEquals(16, MobileRecovery.classifyExit(16, "package updated"));
++        assertEquals(3, MobileRecovery.classifyExit(3, "low memory"));
++        assertEquals(4, MobileRecovery.classifyExit(4, "MemoryLimiter text in a Java exception"));
++        assertEquals(13, MobileRecovery.classifyExit(13, "Chimera killed empty process"));
++        assertEquals(0, MobileRecovery.classifyExit(99, null));
++    }
++    @Test public void reconnectTargetsAreOnlyTmuxSessionIds() {
++        assertTrue(MobileRecovery.validTmuxId("$12"));
++        for (String id : new String[]{"-x", "server:1", "$1;id", "$1\n", "$(id)", "12", "$", "$12345678901"})
++            assertFalse(id, MobileRecovery.validTmuxId(id));
++        assertEquals(1, MobileRecovery.parseTmuxSessions("bad\tname\n$3\trelay\n$4;id\tevil").size());
++        assertEquals("relay", MobileRecovery.parseTmuxSessions("$3\trelay").get(0).name);
++    }
++    @Test public void checkpointIsBoundedWithoutBreakingASurrogatePair() {
++        String prefix = new String(new char[24999]).replace('\0', 'x');
++        assertEquals(24999, MobileRecovery.boundedCheckpoint(prefix + "😀extra").length());
++        assertEquals("", MobileRecovery.boundedCheckpoint(null));
++        assertEquals("終端", MobileRecovery.boundedCheckpoint("終端"));
++    }
++}
+diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileServiceStatusTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileServiceStatusTest.java
+new file mode 100644
+index 0000000..f050359
+--- /dev/null
++++ b/termux-app/app/src/test/java/com/termux/app/terminal/MobileServiceStatusTest.java
+@@ -0,0 +1,26 @@
++package com.termux.app.terminal;
++import org.junit.Test;
++import static org.junit.Assert.*;
++public class MobileServiceStatusTest {
++    @Test public void keepsRuntimeAndStartupIndependent() {
++        MobileServiceStatus running = MobileServiceStatus.parse("run: /usr/var/service/sshd: (pid 20082) 95s; run: log: (pid 7) 96s", false);
++        assertEquals("running", running.state);
++        assertEquals(20082, running.pid);
++        assertFalse(running.startupEnabled);
++        MobileServiceStatus stopped = MobileServiceStatus.parse("down: /usr/var/service/sshd: 12s; run: log: (pid 7) 96s", true);
++        assertEquals("stopped", stopped.state);
++        assertEquals(-1, stopped.pid);
++        assertTrue(stopped.startupEnabled);
++    }
++    @Test public void unavailableSupervisorIsNotReportedAsStopped() {
++        assertEquals("unavailable", MobileServiceStatus.parse("warning: unable to open supervise/ok", true).state);
++        assertEquals(-1, MobileServiceStatus.parse("run: /x: (pid 99999999999999999999)", true).pid);
++    }
++    @Test public void serviceNamesCannotBecomeOptionsOrPaths() {
++        assertTrue(MobileServiceStatus.isValidName("layla-relay"));
++        assertTrue(MobileServiceStatus.isValidName("tx11-xfce4"));
++        for (String name : new String[]{"-up", "../sshd", ".", "a/b", "sshd;id", "$(id)", "", "a\n"})
++            assertFalse(name, MobileServiceStatus.isValidName(name));
++        assertFalse(MobileServiceStatus.isValidName(null));
++    }
++}
 diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java
 new file mode 100644
-index 0000000..a523b50
+index 0000000..fd8ce69
 --- /dev/null
 +++ b/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,101 @@
 +package com.termux.app.terminal;
 +
 +import org.junit.Test;
@@ -259,6 +1425,60 @@ index 0000000..a523b50
 +            -1, 0, "終端").size());
 +        assertTrue(MobileTranscriptSearch.find(row -> "a", 1, 0, "a").isEmpty());
 +    }
++    private static MobileTranscriptSearch.Rows wrapped(String[] text, boolean[] wraps) {
++        return new MobileTranscriptSearch.Rows() {
++            public String textAt(int row) { return text[row]; }
++            public boolean wrapsAt(int row) { return wraps[row]; }
++        };
++    }
++
++    @Test public void findsTextAcrossSoftWrapsWithVisualPositions() {
++        MobileTranscriptSearch.Rows rows = wrapped(new String[]{"prefix ER", "ROR tail"}, new boolean[]{true, false});
++        MobileTranscriptSearch.Match match = MobileTranscriptSearch.find(rows, 0, 1, "error").get(0);
++        assertEquals(0, match.row);
++        assertEquals(1, match.endRow);
++        assertEquals(7, match.startIndex);
++        assertEquals(3, match.endIndex);
++        assertTrue(match.isCurrent(rows, 0, 1));
++    }
++
++    @Test public void doesNotJoinHardNewlinesOrLoseWrappedSpaces() {
++        assertTrue(MobileTranscriptSearch.find(wrapped(new String[]{"ER", "ROR"},
++            new boolean[]{false, false}), 0, 1, "error").isEmpty());
++        assertEquals(1, MobileTranscriptSearch.find(wrapped(new String[]{"hello ", "world"},
++            new boolean[]{true, false}), 0, 1, "hello world").size());
++    }
++
++    @Test public void returnsMultipleOccurrencesNewestFirst() {
++        List<MobileTranscriptSearch.Match> matches = MobileTranscriptSearch.find(row -> "error error", 0, 0, "error");
++        assertEquals(2, matches.size());
++        assertEquals(6, matches.get(0).startIndex);
++        assertEquals(0, matches.get(1).startIndex);
++    }
++
++    @Test public void rejectsEvictedEditedAndReflowedMatches() {
++        String[] text = {"ER", "ROR"};
++        boolean[] wraps = {true, false};
++        MobileTranscriptSearch.Rows rows = wrapped(text, wraps);
++        MobileTranscriptSearch.Match match = MobileTranscriptSearch.find(rows, 0, 1, "error").get(0);
++        assertFalse(match.isCurrent(rows, 1, 1));
++        text[1] = "RXX";
++        assertFalse(match.isCurrent(rows, 0, 1));
++        text[1] = "ROR";
++        wraps[0] = false;
++        assertFalse(match.isCurrent(rows, 0, 1));
++    }
++
++    @Test public void boundsOneVeryLongWrappedLineAndResultCount() {
++        String[] rows = new String[2100];
++        boolean[] wraps = new boolean[rows.length];
++        java.util.Arrays.fill(rows, "aaaa");
++        java.util.Arrays.fill(wraps, true);
++        List<MobileTranscriptSearch.Match> matches = MobileTranscriptSearch.find(wrapped(rows, wraps), 0, 2099, "aa");
++        assertEquals(MobileTranscriptSearch.MAX_MATCHES, matches.size());
++        assertEquals(2099, matches.get(0).row);
++        assertTrue(matches.get(0).isCurrent(wrapped(rows, wraps), 0, 2099));
++    }
 +}
 diff --git a/termux-app/terminal-emulator/src/main/jni/termux.c b/termux-app/terminal-emulator/src/main/jni/termux.c
 index 8cd5e78..8752b05 100644
@@ -274,10 +1494,32 @@ index 8cd5e78..8752b05 100644
      if (argv) {
          for (char** tmp = argv; *tmp; ++tmp) free(*tmp);
 diff --git a/termux-app/terminal-view/src/main/java/com/termux/view/TerminalView.java b/termux-app/terminal-view/src/main/java/com/termux/view/TerminalView.java
-index 435c102..48290d9 100644
+index 435c102..968c071 100644
 --- a/termux-app/terminal-view/src/main/java/com/termux/view/TerminalView.java
 +++ b/termux-app/terminal-view/src/main/java/com/termux/view/TerminalView.java
-@@ -460,7 +460,7 @@ public final class TerminalView extends View {
+@@ -69,6 +69,7 @@ public final class TerminalView extends View {
+     /** The top row of text to display. Ranges from -activeTranscriptRows to 0. */
+     int mTopRow;
+     int[] mDefaultSelectors = new int[]{-1,-1,-1,-1};
++    private int[] mSearchHighlight;
+ 
+     float mScaleFactor = 1.f;
+     final GestureAndScaleRecognizer mGestureRecognizer;
+@@ -288,6 +289,7 @@ public final class TerminalView extends View {
+      * @param session The {@link TerminalSession} this view will be displaying.
+      */
+     public boolean attachSession(TerminalSession session) {
++        clearSearchHighlight();
+         if (session == mTermSession) return false;
+         mTopRow = 0;
+ 
+@@ -455,12 +457,13 @@ public final class TerminalView extends View {
+     }
+ 
+     public void onScreenUpdated(boolean skipScrolling) {
++        clearSearchHighlight();
+         if (mEmulator == null) return;
+ 
          int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
          if (mTopRow < -rowsInHistory) mTopRow = -rowsInHistory;
  
@@ -286,7 +1528,7 @@ index 435c102..48290d9 100644
  
              // Do not scroll when selecting text.
              int rowShift = mEmulator.getScrollCounter();
-@@ -470,7 +470,7 @@ public final class TerminalView extends View {
+@@ -470,7 +473,7 @@ public final class TerminalView extends View {
                  if (isSelectingText())
                      stopTextSelectionMode();
  
@@ -295,3 +1537,96 @@ index 435c102..48290d9 100644
                      mTopRow = -rowsInHistory;
                      skipScrolling = true;
                  }
+@@ -980,6 +983,7 @@ public final class TerminalView extends View {
+ 
+     /** Check if the terminal size in rows and columns should be updated. */
+     public void updateSize() {
++        clearSearchHighlight();
+         int viewWidth = getWidth();
+         int viewHeight = getHeight();
+         if (viewWidth == 0 || viewHeight == 0 || mTermSession == null) return;
+@@ -1013,6 +1017,7 @@ public final class TerminalView extends View {
+             if (mTextSelectionCursorController != null) {
+                 mTextSelectionCursorController.getSelectors(sel);
+             }
++            if (!isSelectingText() && mSearchHighlight != null) sel = mSearchHighlight;
+ 
+             mRenderer.render(mEmulator, canvas, mTopRow, sel[0], sel[1], sel[2], sel[3]);
+ 
+@@ -1025,6 +1030,20 @@ public final class TerminalView extends View {
+         return mTermSession;
+     }
+ 
++    /** Search uses the selection renderer without taking over clipboard selection handles. */
++    public void setSearchHighlight(int firstRow, int lastRow, int firstColumn, int lastColumn) {
++        if (mEmulator == null || firstRow < -mEmulator.getScreen().getActiveTranscriptRows()
++            || lastRow >= mEmulator.mRows || lastRow < firstRow) return;
++        mSearchHighlight = new int[]{firstRow, lastRow, Math.max(0, firstColumn),
++            Math.min(mEmulator.mColumns - 1, lastColumn)};
++        invalidate();
++    }
++
++    public void clearSearchHighlight() {
++        mSearchHighlight = null;
++        invalidate();
++    }
++
+     private CharSequence getText() {
+         return mEmulator.getScreen().getSelectedText(0, mTopRow, mEmulator.mColumns, mTopRow + mEmulator.mRows);
+     }
+diff --git a/termux-app/termux-shared/src/main/java/com/termux/shared/termux/extrakeys/ExtraKeysView.java b/termux-app/termux-shared/src/main/java/com/termux/shared/termux/extrakeys/ExtraKeysView.java
+index 4fbbf1e..e1f7e9f 100644
+--- a/termux-app/termux-shared/src/main/java/com/termux/shared/termux/extrakeys/ExtraKeysView.java
++++ b/termux-app/termux-shared/src/main/java/com/termux/shared/termux/extrakeys/ExtraKeysView.java
+@@ -7,6 +7,7 @@ import android.os.Handler;
+ import android.os.Looper;
+ import android.provider.Settings;
+ import android.util.AttributeSet;
++import android.util.TypedValue;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
+@@ -32,6 +33,7 @@ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
+ 
+ import com.google.android.material.button.MaterialButton;
++import androidx.core.widget.TextViewCompat;
+ import com.termux.shared.R;
+ import com.termux.shared.termux.terminal.io.TerminalExtraKeys;
+ import com.termux.shared.theme.ThemeUtils;
+@@ -413,6 +415,7 @@ public final class ExtraKeysView extends GridLayout {
+                 button.setTextColor(mButtonTextColor);
+                 button.setAllCaps(mButtonTextAllCaps);
+                 button.setPadding(0, 0, 0, 0);
++                configureCompactLabel(button, buttonInfo.getDisplay());
+ 
+                 button.setOnClickListener(view -> {
+                     performExtraKeyButtonHapticFeedback(view, buttonInfo, button);
+@@ -600,6 +603,7 @@ public final class ExtraKeysView extends GridLayout {
+         button.setText(extraButton.getDisplay());
+         button.setAllCaps(mButtonTextAllCaps);
+         button.setPadding(0, 0, 0, 0);
++        configureCompactLabel(button, extraButton.getDisplay());
+         button.setMinHeight(0);
+         button.setMinWidth(0);
+         button.setMinimumWidth(0);
+@@ -616,6 +620,19 @@ public final class ExtraKeysView extends GridLayout {
+         mPopupWindow.showAsDropDown(view, 0, -2 * height);
+     }
+ 
++    /** Keep key labels readable on narrow keyboards without changing key codes or macros. */
++    private void configureCompactLabel(MaterialButton button, String label) {
++        button.setMaxLines(1);
++        button.setHorizontallyScrolling(false);
++        button.setMinWidth(0);
++        button.setMinimumWidth(0);
++        button.setContentDescription(label);
++        float density = getResources().getDisplayMetrics().scaledDensity;
++        int maximumSp = Math.max(10, Math.round(button.getTextSize() / density));
++        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(button, 8, maximumSp, 1,
++            TypedValue.COMPLEX_UNIT_SP);
++    }
++
+     public void dismissPopup() {
+         mPopupWindow.setContentView(null);
+         mPopupWindow.dismiss();

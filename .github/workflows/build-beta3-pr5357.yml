@@ -43,6 +43,8 @@ jobs:
           git -C "$source_dir" fetch --depth 2 origin refs/pull/5357/head
           test "$(git -C "$source_dir" rev-parse FETCH_HEAD)" = 7dd6e3fb1baee13641b08cf129b0f949c0d0e3d7
           git -C "$source_dir" -c user.name='Custom Termux Builder' -c user.email='noreply@users.noreply.github.com' cherry-pick 7dd6e3fb1baee13641b08cf129b0f949c0d0e3d7
+          # Reconstruct into a clean directory, including new files from our patch.
+          rm -rf termux-app
           mkdir -p termux-app downloads
           git -C "$source_dir" archive HEAD | tar -x -C termux-app
           git apply --check patches/mobile-friendly.patch
@@ -59,12 +61,12 @@ jobs:
           java-version: '11'
       - name: Identify custom build
         run: |
-          version="0.119.0-beta.3+pr5357.mobile.${GITHUB_SHA:0:7}"
+          version="0.119.0-beta.3+pr5357.mobile2.${GITHUB_SHA:0:7}"
           echo "TERMUX_APP_VERSION_NAME=$version" >> "$GITHUB_ENV"
           echo "TERMUX_APK_VERSION_TAG=v$version-apt-android-7-github-debug" >> "$GITHUB_ENV"
       - name: Test terminal emulator and build signed APKs
         run: ./gradlew --no-daemon :terminal-emulator:testDebugUnitTest assembleDebug
-      - name: Test mobile actions
+      - name: Test mobile controls and recovery
         run: ./gradlew --no-daemon :app:testDebugUnitTest
       - name: Verify shared-key signatures and generate checksums
         run: |
@@ -108,11 +110,14 @@ jobs:
           git -C "$RUNNER_TEMP/termux-beta3-source" ls-files -z | while IFS= read -r -d '' path; do
             git add -f -- "termux-app/$path"
           done
-          git add -f termux-app/app/src/main/java/com/termux/app/terminal/MobileTerminalActions.java termux-app/app/src/main/java/com/termux/app/terminal/MobileTranscriptSearch.java termux-app/app/src/main/res/values/mobile_actions.xml termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java
+          git add -f termux-app/app/src/main/java/com/termux/app/terminal/Mobile*.java
+          git add -f termux-app/app/src/main/java/com/termux/app/activities/Mobile*.java
+          git add -f termux-app/app/src/main/res/values/mobile_actions.xml
+          git add -f termux-app/app/src/test/java/com/termux/app/terminal/Mobile*Test.java
           git add downloads
           # Imported upstream files retain their original whitespace. Check our seed files only.
           git diff --cached --check -- README.md .github patches
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore: publish verified beta.3 PR 5357 source and signed arm64 APK'
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore: publish verified mobile2 source and signed arm64 APK'
           git fetch origin "$GITHUB_REF_NAME"
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' rebase "origin/$GITHUB_REF_NAME"
           git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -1,6 +1,6 @@
 # Android 17 / One UI 9 review
 
-## Device evidence (read-only, 2026-10-02)
+## Initial device evidence (2026-10-02)
 
 - Samsung SM-S918U1, arm64-v8a, Android 17 / API 37, build CP2A.260605.016.S918U1UEU8ZZI8. The supplied screenshot shows One UI 9.0.
 - `getconf PAGESIZE`: 4096. This handset currently uses 4 KB pages; 16 KB support is not demonstrated by this build.
@@ -39,8 +39,9 @@
 - Final mobile edition: [CI run 37002802377](https://github.com/Zfkirke0109/termux/actions/runs/37002802377) passed. All 153 tests (146 emulator + 7 app, including 5 new search tests) passed with no failures/errors. Debug APK build, certificate checks, artifact upload and source/APK publication succeeded.
 - Source and APKs published at commit `f3c8e845aa05e5233cbefdc7657b7261a9a854fe`; 341 source files are present, without generated build trees. The published custom arm64 APK was downloaded independently and verified with `apksig`: verified, no errors, expected shared-key certificate.
 - Custom arm64 APK SHA-256: `bdc590d46e150796e31cd39c9178ddfe72b5373383bd4ada7a81113dbcbc0352`. Its version name contains `pr5357.mobile.251f35d`.
-- No newly built APK has been installed or exercised on the physical handset yet. No claim of full Android 17/Samsung certification, proven battery improvement, or 16 KB support.
-- UI gestures, clipboard focus, output while scrolling, keyboard rotation, split-screen/DeX and native PTY startup still require physical-device tests. Updating Termux restarts existing sessions; obtain consent and back up first.
+- The first custom mobile build was subsequently installed by the user and exercised on the physical handset: version `0.119.0-beta.3+pr5357.mobile.251f35d`, version code 1022, target 28. Shell/cwd, Ctrl-C, literal search, clipboard including DEL/Unicode/indentation/wraps, stale-result handling, stable scrollback during live output, jump-latest, rotation/Samsung Keyboard and Termux:API clipboard checks passed.
+- App-scoped logcat and exit history showed no reproduced Java/native crash during that test window. Vendor graphics warnings and a missing optional settings value were observed. Short-lived memory/dialog peaks and cumulative jank do not establish a leak or battery improvement. No global process/memory/battery settings were changed.
+- The new mobile2 features added after that device pass require a separate update and the [mobile2 checklist](MOBILE2_TEST_CHECKLIST.md). Split-screen/DeX, 16 KB and Android 18 certification remain unproven. Updating Termux restarts existing sessions; save active work before updating.
 
 ## Device smoke test after an approved in-place update
 

@@ -44,4 +44,58 @@ public class MobileTranscriptSearchTest {
             -1, 0, "終端").size());
         assertTrue(MobileTranscriptSearch.find(row -> "a", 1, 0, "a").isEmpty());
     }
+    private static MobileTranscriptSearch.Rows wrapped(String[] text, boolean[] wraps) {
+        return new MobileTranscriptSearch.Rows() {
+            public String textAt(int row) { return text[row]; }
+            public boolean wrapsAt(int row) { return wraps[row]; }
+        };
+    }
+
+    @Test public void findsTextAcrossSoftWrapsWithVisualPositions() {
+        MobileTranscriptSearch.Rows rows = wrapped(new String[]{"prefix ER", "ROR tail"}, new boolean[]{true, false});
+        MobileTranscriptSearch.Match match = MobileTranscriptSearch.find(rows, 0, 1, "error").get(0);
+        assertEquals(0, match.row);
+        assertEquals(1, match.endRow);
+        assertEquals(7, match.startIndex);
+        assertEquals(3, match.endIndex);
+        assertTrue(match.isCurrent(rows, 0, 1));
+    }
+
+    @Test public void doesNotJoinHardNewlinesOrLoseWrappedSpaces() {
+        assertTrue(MobileTranscriptSearch.find(wrapped(new String[]{"ER", "ROR"},
+            new boolean[]{false, false}), 0, 1, "error").isEmpty());
+        assertEquals(1, MobileTranscriptSearch.find(wrapped(new String[]{"hello ", "world"},
+            new boolean[]{true, false}), 0, 1, "hello world").size());
+    }
+
+    @Test public void returnsMultipleOccurrencesNewestFirst() {
+        List<MobileTranscriptSearch.Match> matches = MobileTranscriptSearch.find(row -> "error error", 0, 0, "error");
+        assertEquals(2, matches.size());
+        assertEquals(6, matches.get(0).startIndex);
+        assertEquals(0, matches.get(1).startIndex);
+    }
+
+    @Test public void rejectsEvictedEditedAndReflowedMatches() {
+        String[] text = {"ER", "ROR"};
+        boolean[] wraps = {true, false};
+        MobileTranscriptSearch.Rows rows = wrapped(text, wraps);
+        MobileTranscriptSearch.Match match = MobileTranscriptSearch.find(rows, 0, 1, "error").get(0);
+        assertFalse(match.isCurrent(rows, 1, 1));
+        text[1] = "RXX";
+        assertFalse(match.isCurrent(rows, 0, 1));
+        text[1] = "ROR";
+        wraps[0] = false;
+        assertFalse(match.isCurrent(rows, 0, 1));
+    }
+
+    @Test public void boundsOneVeryLongWrappedLineAndResultCount() {
+        String[] rows = new String[2100];
+        boolean[] wraps = new boolean[rows.length];
+        java.util.Arrays.fill(rows, "aaaa");
+        java.util.Arrays.fill(wraps, true);
+        List<MobileTranscriptSearch.Match> matches = MobileTranscriptSearch.find(wrapped(rows, wraps), 0, 2099, "aa");
+        assertEquals(MobileTranscriptSearch.MAX_MATCHES, matches.size());
+        assertEquals(2099, matches.get(0).row);
+        assertTrue(matches.get(0).isCurrent(wrapped(rows, wraps), 0, 2099));
+    }
 }

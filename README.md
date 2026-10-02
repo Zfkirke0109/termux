@@ -15,13 +15,13 @@ This repository contains an **unofficial custom build**, not a Termux project re
 
 Upstream SHA-256: `3bb969df2400d884ccb929b7d79cc76861f291c98942c401e12408d734a460f3`.
 
-The root **Build beta.3 with PR 5357** Actions workflow fetches pinned source, runs emulator and app unit tests, checks APK signing certificates, and uploads APKs, checksums and certificate reports. After all checks pass it commits the source, unchanged original APK and custom arm64 APK to this branch under `termux-app/` and `downloads/`. Its version name is `0.119.0-beta.3+pr5357.mobile.<commit>`; the package ID (`com.termux`) and version code (`1022`) are unchanged.
+The root **Build beta.3 with PR 5357** Actions workflow fetches pinned source, runs emulator and app unit tests, checks APK signing certificates, and uploads APKs, checksums and certificate reports. After all checks pass it commits the source, unchanged original APK and custom arm64 APK to this branch under `termux-app/` and `downloads/`. Its version name is `0.119.0-beta.3+pr5357.mobile2.<commit>`; the package ID (`com.termux`) and version code (`1022`) are unchanged.
 
 ## Mobile changes
 
 Long-press the terminal and open **More**:
 
-- **Search recent output**: literal, case-insensitive search, newest rows first. It searches up to 2,000 recent visual rows / 250,000 characters and returns up to 100 matching rows. Wrapped rows are searched separately. Changed output is checked before jumping to a result.
+- **Search recent output**: literal, case-insensitive search, newest rows first. It searches up to 2,000 recent visual rows / 250,000 characters and returns up to 100 occurrences. Soft-wrapped rows are searched as logical lines. Results highlight their terminal positions, with Previous/Next navigation. Search focuses the input and requests the keyboard; changed text or wrapping is checked before jumping.
 - **Copy visible output**: copy the viewport without dragging selection handles; preserves leading indentation and joins soft-wrapped rows.
 - **Jump to latest output**: return to the live screen.
 - **Stable scrollback reading**: scrolling upward no longer snaps back to the bottom whenever fresh output arrives. Typing or jumping to latest returns to the live screen, subject to the pre-existing manual auto-scroll toggle.
@@ -29,6 +29,20 @@ Long-press the terminal and open **More**:
 Search follows upstream request [#4701](https://github.com/termux/termux-app/issues/4701); stable reading addresses requests [#1242](https://github.com/termux/termux-app/issues/1242) and [#684](https://github.com/termux/termux-app/issues/684). These are concrete upstream requests, not a claim that this is a complete ranking of community demand. Copy-visible and jump-latest are supporting mobile conveniences.
 
 The JNI working-directory UTF string is now released with its matching `cwd` Java reference rather than `cmd`. See [Android 17 review](docs/ANDROID17_REVIEW.md) for limits and remaining device tests.
+
+## Five additional improvements
+
+All are included in the `mobile2` build:
+
+1. **Extra keys:** SHIFT and PgUp/PgDn stay on one line, with adaptive text sizing and the full label available to accessibility. Key codes, macros and modifier behavior are preserved.
+2. **Search:** keyboard focus, IME Search action, soft-wrap matching, Unicode-aware highlights and Previous/Next navigation; existing bounds and stale-result checks remain.
+3. **Services:** the More → Services panel discovers existing termux-services (including sshd and layla-relay). It shows current state/PID and startup policy separately. Start/Stop are explicit; Stop asks before ending connections. Startup toggles change the `down` marker without immediately stopping or starting the service.
+4. **Recovery and diagnostics:** recent Android exit reasons and sampled memory, an opt-in private visible-text checkpoint, and reconnect to surviving default-server tmux sessions. Checkpoints do not restore running programs; reconnect cannot resurrect a killed server or survive a reboot.
+5. **Debug logging:** More → Debug logging offers Debug for 15 minutes and Normal now. Timed debugging disables key logging and returns to Normal at its deadline, including after process restart. Manual debugging settings cancel the timer and remain under the user's control.
+
+No services are started just by opening a panel. No historical terminal command is replayed. Diagnostics and checkpoints stay on the device unless the user explicitly copies them.
+
+See [Android 17/18 modernization roadmap](docs/ANDROID17_18_MODERNIZATION.md) for the platform work still needed, validation gates and the Android 18 URI-sharing change already announced in Android documentation.
 
 ## Signing and compatibility
 
@@ -47,8 +61,8 @@ Use Java 11, Android SDK platform 30/build-tools 30.0.3 and NDK 22.1.7171670:
 ```sh
 cd termux-app
 export TERMUX_PACKAGE_VARIANT=apt-android-7
-export TERMUX_APP_VERSION_NAME=0.119.0-beta.3+pr5357.local
-export TERMUX_APK_VERSION_TAG=v0.119.0-beta.3+pr5357.local-apt-android-7-github-debug
+export TERMUX_APP_VERSION_NAME=0.119.0-beta.3+pr5357.mobile2.local
+export TERMUX_APK_VERSION_TAG=v0.119.0-beta.3+pr5357.mobile2.local-apt-android-7-github-debug
 ./gradlew --no-daemon :terminal-emulator:testDebugUnitTest :app:testDebugUnitTest assembleDebug
 ```
 

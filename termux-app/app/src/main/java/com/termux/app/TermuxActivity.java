@@ -30,6 +30,11 @@ import com.termux.R;
 import com.termux.app.api.file.FileReceiverActivity;
 import com.termux.app.terminal.TermuxActivityRootView;
 import com.termux.app.terminal.MobileTerminalActions;
+import com.termux.app.terminal.MobileDebugLogging;
+import com.termux.app.terminal.MobileRecovery;
+import com.termux.app.activities.MobileServicesActivity;
+import com.termux.app.activities.MobileRecoveryActivity;
+import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
 import com.termux.shared.activities.ReportActivity;
@@ -192,6 +197,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_SEARCH_OUTPUT = 12;
     private static final int CONTEXT_MENU_COPY_VISIBLE = 13;
     private static final int CONTEXT_MENU_JUMP_LATEST = 14;
+    private static final int CONTEXT_MENU_SERVICES = 15;
+    private static final int CONTEXT_MENU_RECOVERY = 16;
+    private static final int CONTEXT_MENU_DEBUG_LOGGING = 17;
+    private static final int REQUEST_RECOVERY = 8112;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
@@ -308,6 +317,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     @Override
     public void onResume() {
         super.onResume();
+        MobileDebugLogging.check(this);
 
         Logger.logVerbose(LOG_TAG, "onResume");
 
@@ -641,6 +651,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         menu.add(Menu.NONE, CONTEXT_MENU_SEARCH_OUTPUT, Menu.NONE, R.string.mobile_search_title);
         menu.add(Menu.NONE, CONTEXT_MENU_COPY_VISIBLE, Menu.NONE, R.string.mobile_copy_visible);
         menu.add(Menu.NONE, CONTEXT_MENU_JUMP_LATEST, Menu.NONE, R.string.mobile_jump_latest);
+        menu.add(Menu.NONE, CONTEXT_MENU_SERVICES, Menu.NONE, R.string.mobile_services_title);
+        menu.add(Menu.NONE, CONTEXT_MENU_RECOVERY, Menu.NONE, R.string.mobile_recovery_title);
+        menu.add(Menu.NONE, CONTEXT_MENU_DEBUG_LOGGING, Menu.NONE, R.string.mobile_logging_title);
         menu.add(Menu.NONE, CONTEXT_MENU_SHARE_TRANSCRIPT_ID, Menu.NONE, R.string.action_share_transcript);
         if (!DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText()))
             menu.add(Menu.NONE, CONTEXT_MENU_SHARE_SELECTED_TEXT, Menu.NONE, R.string.action_share_selected_text);
@@ -669,6 +682,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         TerminalSession session = getCurrentSession();
 
         switch (item.getItemId()) {
+            case CONTEXT_MENU_SERVICES:
+                startActivity(new Intent(this, MobileServicesActivity.class));
+                return true;
+            case CONTEXT_MENU_RECOVERY:
+                String visible = session == null || session.getEmulator() == null ? null
+                    : session.getEmulator().getScreen().getSelectedText(0, mTerminalView.getTopRow(),
+                        session.getEmulator().mColumns - 1,
+                        mTerminalView.getTopRow() + session.getEmulator().mRows - 1, true);
+                startActivityForResult(new Intent(this, MobileRecoveryActivity.class)
+                    .putExtra(MobileRecoveryActivity.EXTRA_VISIBLE_OUTPUT, MobileRecovery.boundedCheckpoint(visible)), REQUEST_RECOVERY);
+                return true;
+            case CONTEXT_MENU_DEBUG_LOGGING:
+                showMobileLoggingDialog();
+                return true;
             case CONTEXT_MENU_SEARCH_OUTPUT:
                 MobileTerminalActions.search(this, mTerminalView);
                 return true;
@@ -808,6 +835,22 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_RECOVERY && resultCode == RESULT_OK && data != null) {
+            String id = data.getStringExtra(MobileRecoveryActivity.EXTRA_TMUX_ID);
+            if (MobileRecovery.validTmuxId(id) && mTermuxService != null && mTermuxTerminalSessionActivityClient != null) {
+                if (mTermuxService.getTermuxSessionsSize() >= 8) {
+                    showToast(getString(R.string.title_max_terminals_reached), true);
+                    return;
+                }
+                TermuxSession recovered = mTermuxService.createTermuxSession(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/tmux",
+                    new String[]{"attach-session", "-t", id}, null, TermuxConstants.TERMUX_HOME_DIR_PATH, false, "tmux " + id);
+                if (recovered != null) {
+                    mTermuxTerminalSessionActivityClient.setCurrentSession(recovered.getTerminalSession());
+                    termuxSessionListNotifyUpdated();
+                }
+            }
+            return;
+        }
         Logger.logVerbose(LOG_TAG, "onActivityResult: requestCode: " + requestCode + ", resultCode: "  + resultCode + ", data: "  + IntentUtils.getIntentString(data));
         if (requestCode == PermissionUtils.REQUEST_GRANT_STORAGE_PERMISSION) {
             requestStoragePermission(true);
@@ -827,6 +870,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     public int getNavBarHeight() {
         return mNavBarHeight;
+    }
+
+    private void showMobileLoggingDialog() {
+        boolean timed = MobileDebugLogging.isActive(this);
+        String current = Logger.getLogLevelLabel(this, mPreferences.getLogLevel(), false);
+        new AlertDialog.Builder(this).setTitle(R.string.mobile_logging_title)
+            .setMessage(getString(timed ? R.string.mobile_logging_timed : R.string.mobile_logging_explanation, current))
+            .setPositiveButton(R.string.mobile_logging_debug, (dialog, which) -> {
+                MobileDebugLogging.start(this);
+                showToast(getString(R.string.mobile_logging_started), true);
+            })
+            .setNeutralButton(R.string.mobile_logging_normal, (dialog, which) -> {
+                MobileDebugLogging.normal(this);
+                showToast(getString(R.string.mobile_logging_normalized), true);
+            }).setNegativeButton(android.R.string.cancel, null).show();
     }
 
     public TermuxActivityRootView getTermuxActivityRootView() {

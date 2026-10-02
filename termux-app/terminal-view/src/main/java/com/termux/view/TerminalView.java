@@ -69,6 +69,7 @@ public final class TerminalView extends View {
     /** The top row of text to display. Ranges from -activeTranscriptRows to 0. */
     int mTopRow;
     int[] mDefaultSelectors = new int[]{-1,-1,-1,-1};
+    private int[] mSearchHighlight;
 
     float mScaleFactor = 1.f;
     final GestureAndScaleRecognizer mGestureRecognizer;
@@ -288,6 +289,7 @@ public final class TerminalView extends View {
      * @param session The {@link TerminalSession} this view will be displaying.
      */
     public boolean attachSession(TerminalSession session) {
+        clearSearchHighlight();
         if (session == mTermSession) return false;
         mTopRow = 0;
 
@@ -455,6 +457,7 @@ public final class TerminalView extends View {
     }
 
     public void onScreenUpdated(boolean skipScrolling) {
+        clearSearchHighlight();
         if (mEmulator == null) return;
 
         int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
@@ -980,6 +983,7 @@ public final class TerminalView extends View {
 
     /** Check if the terminal size in rows and columns should be updated. */
     public void updateSize() {
+        clearSearchHighlight();
         int viewWidth = getWidth();
         int viewHeight = getHeight();
         if (viewWidth == 0 || viewHeight == 0 || mTermSession == null) return;
@@ -1013,6 +1017,7 @@ public final class TerminalView extends View {
             if (mTextSelectionCursorController != null) {
                 mTextSelectionCursorController.getSelectors(sel);
             }
+            if (!isSelectingText() && mSearchHighlight != null) sel = mSearchHighlight;
 
             mRenderer.render(mEmulator, canvas, mTopRow, sel[0], sel[1], sel[2], sel[3]);
 
@@ -1023,6 +1028,20 @@ public final class TerminalView extends View {
 
     public TerminalSession getCurrentSession() {
         return mTermSession;
+    }
+
+    /** Search uses the selection renderer without taking over clipboard selection handles. */
+    public void setSearchHighlight(int firstRow, int lastRow, int firstColumn, int lastColumn) {
+        if (mEmulator == null || firstRow < -mEmulator.getScreen().getActiveTranscriptRows()
+            || lastRow >= mEmulator.mRows || lastRow < firstRow) return;
+        mSearchHighlight = new int[]{firstRow, lastRow, Math.max(0, firstColumn),
+            Math.min(mEmulator.mColumns - 1, lastColumn)};
+        invalidate();
+    }
+
+    public void clearSearchHighlight() {
+        mSearchHighlight = null;
+        invalidate();
     }
 
     private CharSequence getText() {

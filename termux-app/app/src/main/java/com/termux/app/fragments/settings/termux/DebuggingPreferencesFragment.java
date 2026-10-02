@@ -13,6 +13,7 @@ import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceManager;
 
 import com.termux.R;
+import com.termux.app.terminal.MobileDebugLogging;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.shared.logger.Logger;
 
@@ -107,6 +108,7 @@ class DebuggingPreferencesDataStore extends PreferenceDataStore {
         switch (key) {
             case "log_level":
                 if (value != null) {
+                    MobileDebugLogging.cancel(mContext);
                     mPreferences.setLogLevel(mContext, Integer.parseInt(value));
                 }
                 break;
@@ -124,6 +126,7 @@ class DebuggingPreferencesDataStore extends PreferenceDataStore {
 
         switch (key) {
             case "terminal_view_key_logging_enabled":
+                    MobileDebugLogging.cancel(mContext);
                     mPreferences.setTerminalViewKeyLoggingEnabled(value);
                 break;
             case "plugin_error_notifications_enabled":

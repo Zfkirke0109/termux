@@ -4,6 +4,7 @@ import android.app.Application;
 import android.content.Context;
 
 import com.termux.BuildConfig;
+import com.termux.app.terminal.MobileDebugLogging;
 import com.termux.shared.errors.Error;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxBootstrap;
@@ -31,6 +32,7 @@ public class TermuxApplication extends Application {
 
         // Set log config for the app
         setLogConfig(context);
+        MobileDebugLogging.check(context);
 
         Logger.logDebug("Starting Application");
 

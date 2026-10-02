@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.AttributeSet;
+import android.util.TypedValue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.google.android.material.button.MaterialButton;
+import androidx.core.widget.TextViewCompat;
 import com.termux.shared.R;
 import com.termux.shared.termux.terminal.io.TerminalExtraKeys;
 import com.termux.shared.theme.ThemeUtils;
@@ -413,6 +415,7 @@ public final class ExtraKeysView extends GridLayout {
                 button.setTextColor(mButtonTextColor);
                 button.setAllCaps(mButtonTextAllCaps);
                 button.setPadding(0, 0, 0, 0);
+                configureCompactLabel(button, buttonInfo.getDisplay());
 
                 button.setOnClickListener(view -> {
                     performExtraKeyButtonHapticFeedback(view, buttonInfo, button);
@@ -600,6 +603,7 @@ public final class ExtraKeysView extends GridLayout {
         button.setText(extraButton.getDisplay());
         button.setAllCaps(mButtonTextAllCaps);
         button.setPadding(0, 0, 0, 0);
+        configureCompactLabel(button, extraButton.getDisplay());
         button.setMinHeight(0);
         button.setMinWidth(0);
         button.setMinimumWidth(0);
@@ -614,6 +618,19 @@ public final class ExtraKeysView extends GridLayout {
         mPopupWindow.setOutsideTouchable(true);
         mPopupWindow.setFocusable(false);
         mPopupWindow.showAsDropDown(view, 0, -2 * height);
+    }
+
+    /** Keep key labels readable on narrow keyboards without changing key codes or macros. */
+    private void configureCompactLabel(MaterialButton button, String label) {
+        button.setMaxLines(1);
+        button.setHorizontallyScrolling(false);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setContentDescription(label);
+        float density = getResources().getDisplayMetrics().scaledDensity;
+        int maximumSp = Math.max(10, Math.round(button.getTextSize() / density));
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(button, 8, maximumSp, 1,
+            TypedValue.COMPLEX_UNIT_SP);
     }
 
     public void dismissPopup() {
