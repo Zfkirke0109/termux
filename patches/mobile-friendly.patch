@@ -1,0 +1,293 @@
+diff --git a/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java b/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
+index 57de754..7ff35fb 100644
+--- a/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
++++ b/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
+@@ -29,6 +29,7 @@ import android.widget.Toast;
+ import com.termux.R;
+ import com.termux.app.api.file.FileReceiverActivity;
+ import com.termux.app.terminal.TermuxActivityRootView;
++import com.termux.app.terminal.MobileTerminalActions;
+ import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
+ import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
+ import com.termux.shared.activities.ReportActivity;
+@@ -188,6 +189,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+     private static final int CONTEXT_MENU_HELP_ID = 7;
+     private static final int CONTEXT_MENU_SETTINGS_ID = 8;
+     private static final int CONTEXT_MENU_REPORT_ID = 9;
++    private static final int CONTEXT_MENU_SEARCH_OUTPUT = 12;
++    private static final int CONTEXT_MENU_COPY_VISIBLE = 13;
++    private static final int CONTEXT_MENU_JUMP_LATEST = 14;
+ 
+     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
+     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
+@@ -634,6 +638,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+         boolean autoFillEnabled = mTerminalView.isAutoFillEnabled();
+ 
+         menu.add(Menu.NONE, CONTEXT_MENU_SELECT_URL_ID, Menu.NONE, R.string.action_select_url);
++        menu.add(Menu.NONE, CONTEXT_MENU_SEARCH_OUTPUT, Menu.NONE, R.string.mobile_search_title);
++        menu.add(Menu.NONE, CONTEXT_MENU_COPY_VISIBLE, Menu.NONE, R.string.mobile_copy_visible);
++        menu.add(Menu.NONE, CONTEXT_MENU_JUMP_LATEST, Menu.NONE, R.string.mobile_jump_latest);
+         menu.add(Menu.NONE, CONTEXT_MENU_SHARE_TRANSCRIPT_ID, Menu.NONE, R.string.action_share_transcript);
+         if (!DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText()))
+             menu.add(Menu.NONE, CONTEXT_MENU_SHARE_SELECTED_TEXT, Menu.NONE, R.string.action_share_selected_text);
+@@ -662,6 +669,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+         TerminalSession session = getCurrentSession();
+ 
+         switch (item.getItemId()) {
++            case CONTEXT_MENU_SEARCH_OUTPUT:
++                MobileTerminalActions.search(this, mTerminalView);
++                return true;
++            case CONTEXT_MENU_COPY_VISIBLE:
++                MobileTerminalActions.copyVisible(this, mTerminalView);
++                return true;
++            case CONTEXT_MENU_JUMP_LATEST:
++                MobileTerminalActions.jumpToLatest(mTerminalView);
++                return true;
+             case CONTEXT_MENU_SELECT_URL_ID:
+                 mTermuxTerminalViewClient.showUrlSelection();
+                 return true;
+diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileTerminalActions.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileTerminalActions.java
+new file mode 100644
+index 0000000..97afcf4
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileTerminalActions.java
+@@ -0,0 +1,81 @@
++package com.termux.app.terminal;
++
++import android.app.Activity;
++import android.app.AlertDialog;
++import android.text.InputFilter;
++import android.text.InputType;
++import android.widget.EditText;
++import android.widget.Toast;
++
++import com.termux.R;
++import com.termux.shared.interact.ShareUtils;
++import com.termux.terminal.TerminalEmulator;
++import com.termux.terminal.TerminalSession;
++import com.termux.view.TerminalView;
++
++import java.util.List;
++
++/** Touch-friendly actions. Clipboard access occurs only after an explicit user action. */
++public final class MobileTerminalActions {
++    private MobileTerminalActions() {}
++
++    public static void copyVisible(Activity activity, TerminalView view) {
++        TerminalSession session = view.getCurrentSession();
++        TerminalEmulator emulator = session == null ? null : session.getEmulator();
++        if (emulator == null) return;
++        int top = Math.max(-emulator.getScreen().getActiveTranscriptRows(), Math.min(0, view.getTopRow()));
++        String text = emulator.getScreen().getSelectedText(0, top, emulator.mColumns - 1,
++            Math.min(emulator.mRows - 1, top + emulator.mRows - 1), true);
++        ShareUtils.copyTextToClipboard(activity, text, activity.getString(R.string.mobile_screen_copied));
++    }
++
++    public static void jumpToLatest(TerminalView view) {
++        if (view.getCurrentSession() == null) return;
++        view.stopTextSelectionMode();
++        view.setTopRow(0);
++        view.onScreenUpdated(true);
++    }
++
++    public static void search(Activity activity, TerminalView view) {
++        TerminalSession session = view.getCurrentSession();
++        TerminalEmulator emulator = session == null ? null : session.getEmulator();
++        if (emulator == null) return;
++        EditText input = new EditText(activity);
++        input.setSingleLine(true);
++        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
++        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(256)});
++        input.setHint(R.string.mobile_search_hint);
++        new AlertDialog.Builder(activity).setTitle(R.string.mobile_search_title).setView(input)
++            .setNegativeButton(android.R.string.cancel, null)
++            .setPositiveButton(R.string.mobile_search_button, (dialog, which) -> {
++                if (view.getCurrentSession() != session || session.getEmulator() != emulator) return;
++                List<MobileTranscriptSearch.Match> matches = MobileTranscriptSearch.find(
++                    row -> emulator.getScreen().getSelectedText(0, row, emulator.mColumns - 1, row, false),
++                    -emulator.getScreen().getActiveTranscriptRows(), emulator.mRows - 1, input.getText().toString());
++                if (matches.isEmpty()) {
++                    Toast.makeText(activity, R.string.mobile_search_no_matches, Toast.LENGTH_LONG).show();
++                    return;
++                }
++                String[] labels = new String[matches.size()];
++                for (int i = 0; i < labels.length; i++) {
++                    MobileTranscriptSearch.Match match = matches.get(i);
++                    labels[i] = activity.getString(R.string.mobile_search_row, match.row) + " "
++                        + match.text.substring(0, Math.min(160, match.text.length()));
++                }
++                new AlertDialog.Builder(activity).setTitle(R.string.mobile_search_results)
++                    .setItems(labels, (results, index) -> {
++                        MobileTranscriptSearch.Match match = matches.get(index);
++                        if (view.getCurrentSession() != session || session.getEmulator() != emulator
++                            || match.row < -emulator.getScreen().getActiveTranscriptRows()
++                            || !match.text.equals(emulator.getScreen().getSelectedText(0, match.row,
++                                emulator.mColumns - 1, match.row, false))) {
++                            Toast.makeText(activity, R.string.mobile_search_changed, Toast.LENGTH_LONG).show();
++                            return;
++                        }
++                        view.stopTextSelectionMode();
++                        view.setTopRow(Math.min(0, match.row));
++                        view.onScreenUpdated(true);
++                    }).setNegativeButton(android.R.string.cancel, null).show();
++            }).show();
++    }
++}
+diff --git a/termux-app/app/src/main/java/com/termux/app/terminal/MobileTranscriptSearch.java b/termux-app/app/src/main/java/com/termux/app/terminal/MobileTranscriptSearch.java
+new file mode 100644
+index 0000000..28a48a3
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/terminal/MobileTranscriptSearch.java
+@@ -0,0 +1,50 @@
++package com.termux.app.terminal;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/** Bounded literal search; does not copy the entire scrollback or execute shell commands. */
++public final class MobileTranscriptSearch {
++    public static final int MAX_ROWS = 2000;
++    public static final int MAX_CHARACTERS = 250000;
++    public static final int MAX_MATCHES = 100;
++
++    public interface Rows {
++        String textAt(int row);
++    }
++
++    public static final class Match {
++        public final int row;
++        public final String text;
++
++        Match(int row, String text) {
++            this.row = row;
++            this.text = text;
++        }
++    }
++
++    private MobileTranscriptSearch() {}
++
++    /** Newest visual rows first. Wrapped lines are searched independently. */
++    public static List<Match> find(Rows rows, int oldestRow, int newestRow, String query) {
++        List<Match> matches = new ArrayList<>();
++        if (query == null || query.isEmpty() || query.length() > 256 || query.indexOf('\n') >= 0)
++            return matches;
++        int characters = 0;
++        int count = 0;
++        for (int row = newestRow; row >= oldestRow && count < MAX_ROWS; row--, count++) {
++            String text = rows.textAt(row);
++            if (text == null) continue;
++            if (text.length() > MAX_CHARACTERS - characters) break;
++            characters += text.length();
++            for (int offset = 0; offset <= text.length() - query.length(); offset++) {
++                if (text.regionMatches(true, offset, query, 0, query.length())) {
++                    matches.add(new Match(row, text));
++                    break;
++                }
++            }
++            if (matches.size() == MAX_MATCHES) break;
++        }
++        return matches;
++    }
++}
+diff --git a/termux-app/app/src/main/res/values/mobile_actions.xml b/termux-app/app/src/main/res/values/mobile_actions.xml
+new file mode 100644
+index 0000000..84eb14e
+--- /dev/null
++++ b/termux-app/app/src/main/res/values/mobile_actions.xml
+@@ -0,0 +1,12 @@
++<resources>
++    <string name="mobile_search_title">Search recent output</string>
++    <string name="mobile_search_hint">Literal text, case-insensitive</string>
++    <string name="mobile_search_button">Search</string>
++    <string name="mobile_search_results">Matching rows (newest first)</string>
++    <string name="mobile_search_no_matches">No match in the recent search window (up to 2,000 rows / 250,000 characters).</string>
++    <string name="mobile_search_changed">Output changed. Search again to locate this text safely.</string>
++    <string name="mobile_search_row">Row %1$d:</string>
++    <string name="mobile_copy_visible">Copy visible output</string>
++    <string name="mobile_screen_copied">Visible output copied</string>
++    <string name="mobile_jump_latest">Jump to latest output</string>
++</resources>
+diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java
+new file mode 100644
+index 0000000..9a5a014
+--- /dev/null
++++ b/termux-app/app/src/test/java/com/termux/app/terminal/MobileTranscriptSearchTest.java
+@@ -0,0 +1,43 @@
++package com.termux.app.terminal;
++
++import org.junit.Test;
++import java.util.List;
++import java.util.concurrent.atomic.AtomicInteger;
++import static org.junit.Assert.*;
++
++public class MobileTranscriptSearchTest {
++    @Test public void searchesNewestFirstIgnoringCaseWithLiteralCharacters() {
++        List<MobileTranscriptSearch.Match> found = MobileTranscriptSearch.find(
++            row -> row == -1 ? "Error [a.*]" : "older error [a.*]", -2, -1, "ERROR [a.*]");
++        assertEquals(2, found.size());
++        assertEquals(-1, found.get(0).row);
++        assertEquals(-2, found.get(1).row);
++    }
++
++    @Test public void rejectsEmptyAndMultilineQueriesWithoutReadingBuffer() {
++        MobileTranscriptSearch.Rows rows = row -> { fail("must not read"); return null; };
++        assertTrue(MobileTranscriptSearch.find(rows, -3, 0, "").isEmpty());
++        assertTrue(MobileTranscriptSearch.find(rows, -3, 0, null).isEmpty());
++        assertTrue(MobileTranscriptSearch.find(rows, -3, 0, "a\nb").isEmpty());
++    }
++
++    @Test public void boundsScannedRows() {
++        AtomicInteger count = new AtomicInteger();
++        assertTrue(MobileTranscriptSearch.find(row -> { count.incrementAndGet(); return "no match"; },
++            -100000, 0, "missing").isEmpty());
++        assertEquals(MobileTranscriptSearch.MAX_ROWS, count.get());
++    }
++
++    @Test public void boundsCharactersAndResults() {
++        String longRow = new String(new char[10000]).replace('\0', 'x');
++        assertTrue(MobileTranscriptSearch.find(row -> longRow, -100, 0, "missing").isEmpty());
++        assertEquals(MobileTranscriptSearch.MAX_MATCHES,
++            MobileTranscriptSearch.find(row -> "match", -1000, 0, "match").size());
++    }
++
++    @Test public void handlesUnicodeAndMissingRows() {
++        assertEquals(1, MobileTranscriptSearch.find(row -> row == 0 ? "終端 error" : null,
++            -1, 0, "終端").size());
++        assertTrue(MobileTranscriptSearch.find(row -> "a", 1, 0, "a").isEmpty());
++    }
++}
+diff --git a/termux-app/terminal-emulator/src/main/jni/termux.c b/termux-app/terminal-emulator/src/main/jni/termux.c
+index 8cd5e78..8752b05 100644
+--- a/termux-app/terminal-emulator/src/main/jni/termux.c
++++ b/termux-app/terminal-emulator/src/main/jni/termux.c
+@@ -162,7 +162,7 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
+     char const* cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
+     int ptm = create_subprocess(env, cmd_utf8, cmd_cwd, argv, envp, &procId, rows, columns, cell_width, cell_height);
+     (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
+-    (*env)->ReleaseStringUTFChars(env, cmd, cmd_cwd);
++    (*env)->ReleaseStringUTFChars(env, cwd, cmd_cwd);
+ 
+     if (argv) {
+         for (char** tmp = argv; *tmp; ++tmp) free(*tmp);
+diff --git a/termux-app/terminal-view/src/main/java/com/termux/view/TerminalView.java b/termux-app/terminal-view/src/main/java/com/termux/view/TerminalView.java
+index 435c102..48290d9 100644
+--- a/termux-app/terminal-view/src/main/java/com/termux/view/TerminalView.java
++++ b/termux-app/terminal-view/src/main/java/com/termux/view/TerminalView.java
+@@ -460,7 +460,7 @@ public final class TerminalView extends View {
+         int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
+         if (mTopRow < -rowsInHistory) mTopRow = -rowsInHistory;
+ 
+-        if (isSelectingText() || mEmulator.isAutoScrollDisabled()) {
++        if (isSelectingText() || mEmulator.isAutoScrollDisabled() || mTopRow < 0) {
+ 
+             // Do not scroll when selecting text.
+             int rowShift = mEmulator.getScrollCounter();
+@@ -470,7 +470,7 @@ public final class TerminalView extends View {
+                 if (isSelectingText())
+                     stopTextSelectionMode();
+ 
+-                if (mEmulator.isAutoScrollDisabled()) {
++                if (mEmulator.isAutoScrollDisabled() || mTopRow < 0) {
+                     mTopRow = -rowsInHistory;
+                     skipScrolling = true;
+                 }
