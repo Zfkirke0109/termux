@@ -36,7 +36,9 @@
 
 - Baseline beta.3 + PR #5357: 146 emulator tests passed; all debug APKs compiled and their shared-key certificate verification passed in run [37001425462](https://github.com/Zfkirke0109/termux/actions/runs/37001425462). That run's final publication step failed only on upstream whitespace.
 - Five new pure-Java search tests passed locally: literal case-insensitive search/order, empty/multiline rejection, row limits, character/result bounds, Unicode/null rows.
-- The mobile edition must pass the root CI workflow before publication. Its test artifacts are the verification record.
+- Final mobile edition: [CI run 37002802377](https://github.com/Zfkirke0109/termux/actions/runs/37002802377) passed. All 153 tests (146 emulator + 7 app, including 5 new search tests) passed with no failures/errors. Debug APK build, certificate checks, artifact upload and source/APK publication succeeded.
+- Source and APKs published at commit `f3c8e845aa05e5233cbefdc7657b7261a9a854fe`; 341 source files are present, without generated build trees. The published custom arm64 APK was downloaded independently and verified with `apksig`: verified, no errors, expected shared-key certificate.
+- Custom arm64 APK SHA-256: `bdc590d46e150796e31cd39c9178ddfe72b5373383bd4ada7a81113dbcbc0352`. Its version name contains `pr5357.mobile.251f35d`.
 - No newly built APK has been installed or exercised on the physical handset yet. No claim of full Android 17/Samsung certification, proven battery improvement, or 16 KB support.
 - UI gestures, clipboard focus, output while scrolling, keyboard rotation, split-screen/DeX and native PTY startup still require physical-device tests. Updating Termux restarts existing sessions; obtain consent and back up first.
 
