@@ -546,7 +546,7 @@ index 0000000..998984f
 +    }
 +}
 diff --git a/termux-app/app/src/main/java/com/termux/app/fragments/settings/termux/DebuggingPreferencesFragment.java b/termux-app/app/src/main/java/com/termux/app/fragments/settings/termux/DebuggingPreferencesFragment.java
-index 8afd568..9b0be5f 100644
+index 8afd568..16d5948 100644
 --- a/termux-app/app/src/main/java/com/termux/app/fragments/settings/termux/DebuggingPreferencesFragment.java
 +++ b/termux-app/app/src/main/java/com/termux/app/fragments/settings/termux/DebuggingPreferencesFragment.java
 @@ -13,6 +13,7 @@ import androidx.preference.PreferenceFragmentCompat;
@@ -557,7 +557,20 @@ index 8afd568..9b0be5f 100644
  import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
  import com.termux.shared.logger.Logger;
  
-@@ -107,6 +108,7 @@ class DebuggingPreferencesDataStore extends PreferenceDataStore {
+@@ -42,6 +43,12 @@ public class DebuggingPreferencesFragment extends PreferenceFragmentCompat {
+             if (preferences == null) return;
+ 
+             setLogLevelListPreferenceData(logLevelListPreference, context, preferences.getLogLevel());
++            // Even choosing the already-selected Debug level is an explicit manual choice.
++            // PreferenceDataStore is skipped when the persisted value is unchanged.
++            logLevelListPreference.setOnPreferenceChangeListener((preference, value) -> {
++                MobileDebugLogging.cancel(context);
++                return true;
++            });
+             loggingCategory.addPreference(logLevelListPreference);
+         }
+     }
+@@ -107,6 +114,7 @@ class DebuggingPreferencesDataStore extends PreferenceDataStore {
          switch (key) {
              case "log_level":
                  if (value != null) {
@@ -565,7 +578,7 @@ index 8afd568..9b0be5f 100644
                      mPreferences.setLogLevel(mContext, Integer.parseInt(value));
                  }
                  break;
-@@ -124,6 +126,7 @@ class DebuggingPreferencesDataStore extends PreferenceDataStore {
+@@ -124,6 +132,7 @@ class DebuggingPreferencesDataStore extends PreferenceDataStore {
  
          switch (key) {
              case "terminal_view_key_logging_enabled":
@@ -1207,10 +1220,10 @@ index 0000000..10e5008
 +</resources>
 diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileControlsUiTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileControlsUiTest.java
 new file mode 100644
-index 0000000..1fc56f2
+index 0000000..9696107
 --- /dev/null
 +++ b/termux-app/app/src/test/java/com/termux/app/terminal/MobileControlsUiTest.java
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,104 @@
 +package com.termux.app.terminal;
 +
 +import android.app.Application;
@@ -1230,6 +1243,10 @@ index 0000000..1fc56f2
 +import org.junit.runner.RunWith;
 +import org.robolectric.RobolectricTestRunner;
 +import org.robolectric.RuntimeEnvironment;
++import org.robolectric.Robolectric;
++import androidx.appcompat.app.AppCompatActivity;
++import androidx.preference.ListPreference;
++import com.termux.app.fragments.settings.termux.DebuggingPreferencesFragment;
 +import org.robolectric.annotation.Config;
 +import static org.junit.Assert.*;
 +
@@ -1291,6 +1308,24 @@ index 0000000..1fc56f2
 +        MobileDebugLogging.check(context);
 +        assertFalse(MobileDebugLogging.isActive(context));
 +        assertEquals(Logger.LOG_LEVEL_VERBOSE, preferences.getLogLevel());
++    }
++
++    @Test public void selectingTheSameDebugLevelCancelsTheTimerButOpeningSettingsDoesNot() {
++        MobileDebugLogging.start(context);
++        org.robolectric.android.controller.ActivityController<AppCompatActivity> controller =
++            Robolectric.buildActivity(AppCompatActivity.class);
++        controller.get().setTheme(R.style.Theme_TermuxApp_DayNight_DarkActionBar);
++        AppCompatActivity activity = controller.setup().get();
++        DebuggingPreferencesFragment fragment = new DebuggingPreferencesFragment();
++        activity.getSupportFragmentManager().beginTransaction().add(android.R.id.content, fragment).commitNow();
++        assertTrue(MobileDebugLogging.isActive(context));
++        ListPreference preference = fragment.findPreference("log_level");
++        assertNotNull(preference);
++        assertEquals("2", preference.getValue());
++        assertTrue(preference.callChangeListener("2"));
++        assertFalse(MobileDebugLogging.isActive(context));
++        assertEquals(Logger.LOG_LEVEL_DEBUG, TermuxAppSharedPreferences.build(context).getLogLevel());
++        controller.pause().stop().destroy();
 +    }
 +}
 diff --git a/termux-app/app/src/test/java/com/termux/app/terminal/MobileDebugPolicyTest.java b/termux-app/app/src/test/java/com/termux/app/terminal/MobileDebugPolicyTest.java

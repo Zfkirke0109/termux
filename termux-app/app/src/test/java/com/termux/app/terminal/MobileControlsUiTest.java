@@ -17,6 +17,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
+import org.robolectric.Robolectric;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.preference.ListPreference;
+import com.termux.app.fragments.settings.termux.DebuggingPreferencesFragment;
 import org.robolectric.annotation.Config;
 import static org.junit.Assert.*;
 
@@ -78,5 +82,23 @@ public class MobileControlsUiTest {
         MobileDebugLogging.check(context);
         assertFalse(MobileDebugLogging.isActive(context));
         assertEquals(Logger.LOG_LEVEL_VERBOSE, preferences.getLogLevel());
+    }
+
+    @Test public void selectingTheSameDebugLevelCancelsTheTimerButOpeningSettingsDoesNot() {
+        MobileDebugLogging.start(context);
+        org.robolectric.android.controller.ActivityController<AppCompatActivity> controller =
+            Robolectric.buildActivity(AppCompatActivity.class);
+        controller.get().setTheme(R.style.Theme_TermuxApp_DayNight_DarkActionBar);
+        AppCompatActivity activity = controller.setup().get();
+        DebuggingPreferencesFragment fragment = new DebuggingPreferencesFragment();
+        activity.getSupportFragmentManager().beginTransaction().add(android.R.id.content, fragment).commitNow();
+        assertTrue(MobileDebugLogging.isActive(context));
+        ListPreference preference = fragment.findPreference("log_level");
+        assertNotNull(preference);
+        assertEquals("2", preference.getValue());
+        assertTrue(preference.callChangeListener("2"));
+        assertFalse(MobileDebugLogging.isActive(context));
+        assertEquals(Logger.LOG_LEVEL_DEBUG, TermuxAppSharedPreferences.build(context).getLogLevel());
+        controller.pause().stop().destroy();
     }
 }

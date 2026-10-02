@@ -43,6 +43,12 @@ public class DebuggingPreferencesFragment extends PreferenceFragmentCompat {
             if (preferences == null) return;
 
             setLogLevelListPreferenceData(logLevelListPreference, context, preferences.getLogLevel());
+            // Even choosing the already-selected Debug level is an explicit manual choice.
+            // PreferenceDataStore is skipped when the persisted value is unchanged.
+            logLevelListPreference.setOnPreferenceChangeListener((preference, value) -> {
+                MobileDebugLogging.cancel(context);
+                return true;
+            });
             loggingCategory.addPreference(logLevelListPreference);
         }
     }
