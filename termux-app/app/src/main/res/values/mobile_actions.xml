@@ -37,7 +37,7 @@
     <string name="mobile_exit_history_header">Recent Android process exits. Memory figures are the last sampled values, not exact values at exit.</string>
     <string name="mobile_exit_history_empty">Android has no recent exit records for Termux.</string>
     <string name="mobile_exit_history_unsupported">Android exit history requires Android 11 or later.</string>
-    <string name="mobile_exit_sample">PID %1$d · status/signal %2$d · sampled PSS %3$d KiB · RSS %4$d KiB</string>
+    <string name="mobile_exit_sample">PID %1$d · status/signal %2$d · sampled PSS %3$d KiB · RSS %4$d KiB · Android reason %5$d</string>
     <string name="mobile_exit_unknown">Unknown exit reason</string>
     <string name="mobile_exit_self">Process exited itself</string>
     <string name="mobile_exit_signal">Process ended by a signal</string>

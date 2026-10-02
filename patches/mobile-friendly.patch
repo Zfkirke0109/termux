@@ -15,7 +15,7 @@ index 7c566c8..75a4210 100644
              android:name=".shared.activities.ReportActivity"
              android:theme="@style/Theme.MarkdownViewActivity.DayNight"
 diff --git a/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java b/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
-index 57de754..2f007ee 100644
+index 57de754..d49b037 100644
 --- a/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
 +++ b/termux-app/app/src/main/java/com/termux/app/TermuxActivity.java
 @@ -29,6 +29,12 @@ import android.widget.Toast;
@@ -119,7 +119,7 @@ index 57de754..2f007ee 100644
          Logger.logVerbose(LOG_TAG, "onActivityResult: requestCode: " + requestCode + ", resultCode: "  + resultCode + ", data: "  + IntentUtils.getIntentString(data));
          if (requestCode == PermissionUtils.REQUEST_GRANT_STORAGE_PERMISSION) {
              requestStoragePermission(true);
-@@ -813,6 +872,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
+@@ -813,6 +872,30 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
          return mNavBarHeight;
      }
  
@@ -130,12 +130,21 @@ index 57de754..2f007ee 100644
 +            .setMessage(getString(timed ? R.string.mobile_logging_timed : R.string.mobile_logging_explanation, current))
 +            .setPositiveButton(R.string.mobile_logging_debug, (dialog, which) -> {
 +                MobileDebugLogging.start(this);
++                disableMobileInputLogging();
 +                showToast(getString(R.string.mobile_logging_started), true);
 +            })
 +            .setNeutralButton(R.string.mobile_logging_normal, (dialog, which) -> {
 +                MobileDebugLogging.normal(this);
++                disableMobileInputLogging();
 +                showToast(getString(R.string.mobile_logging_normalized), true);
 +            }).setNegativeButton(android.R.string.cancel, null).show();
++    }
++
++    private void disableMobileInputLogging() {
++        // The view caches this preference; apply it immediately, before another keystroke.
++        mTerminalView.setIsTerminalViewKeyLoggingEnabled(false);
++        mTermuxActivityRootView.setIsRootViewLoggingEnabled(false);
++        ViewUtils.setIsViewUtilsLoggingEnabled(false);
 +    }
 +
      public TermuxActivityRootView getTermuxActivityRootView() {
@@ -163,7 +172,7 @@ index a3be612..68759c4 100644
  
 diff --git a/termux-app/app/src/main/java/com/termux/app/activities/MobileRecoveryActivity.java b/termux-app/app/src/main/java/com/termux/app/activities/MobileRecoveryActivity.java
 new file mode 100644
-index 0000000..49190ae
+index 0000000..97d33ce
 --- /dev/null
 +++ b/termux-app/app/src/main/java/com/termux/app/activities/MobileRecoveryActivity.java
 @@ -0,0 +1,190 @@
@@ -277,7 +286,7 @@ index 0000000..49190ae
 +            String description = exit.getDescription();
 +            report.append("\n\n").append(DateFormat.getDateTimeInstance().format(new Date(exit.getTimestamp())))
 +                .append("\n").append(getString(reasons[MobileRecovery.classifyExit(exit.getReason(), description)]))
-+                .append("\n").append(getString(R.string.mobile_exit_sample, exit.getPid(), exit.getStatus(), exit.getPss(), exit.getRss()));
++                .append("\n").append(getString(R.string.mobile_exit_sample, exit.getPid(), exit.getStatus(), exit.getPss(), exit.getRss(), exit.getReason()));
 +            if (description != null) report.append("\n").append(description.substring(0, Math.min(1024, description.length())));
 +        }
 +        return report.toString();
@@ -359,10 +368,10 @@ index 0000000..49190ae
 +}
 diff --git a/termux-app/app/src/main/java/com/termux/app/activities/MobileServicesActivity.java b/termux-app/app/src/main/java/com/termux/app/activities/MobileServicesActivity.java
 new file mode 100644
-index 0000000..8d31dac
+index 0000000..998984f
 --- /dev/null
 +++ b/termux-app/app/src/main/java/com/termux/app/activities/MobileServicesActivity.java
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,173 @@
 +package com.termux.app.activities;
 +
 +import android.os.Bundle;
@@ -508,6 +517,7 @@ index 0000000..8d31dac
 +    }
 +    private void change(String name, String operation) {
 +        busy = true;
++        content.removeAllViews();
 +        label(getString(R.string.mobile_services_loading));
 +        MobileCommandRunner.BACKGROUND.execute(() -> {
 +            try {
@@ -1113,7 +1123,7 @@ index 0000000..21de2ef
 +}
 diff --git a/termux-app/app/src/main/res/values/mobile_actions.xml b/termux-app/app/src/main/res/values/mobile_actions.xml
 new file mode 100644
-index 0000000..ac8bd00
+index 0000000..10e5008
 --- /dev/null
 +++ b/termux-app/app/src/main/res/values/mobile_actions.xml
 @@ -0,0 +1,78 @@
@@ -1156,7 +1166,7 @@ index 0000000..ac8bd00
 +    <string name="mobile_exit_history_header">Recent Android process exits. Memory figures are the last sampled values, not exact values at exit.</string>
 +    <string name="mobile_exit_history_empty">Android has no recent exit records for Termux.</string>
 +    <string name="mobile_exit_history_unsupported">Android exit history requires Android 11 or later.</string>
-+    <string name="mobile_exit_sample">PID %1$d · status/signal %2$d · sampled PSS %3$d KiB · RSS %4$d KiB</string>
++    <string name="mobile_exit_sample">PID %1$d · status/signal %2$d · sampled PSS %3$d KiB · RSS %4$d KiB · Android reason %5$d</string>
 +    <string name="mobile_exit_unknown">Unknown exit reason</string>
 +    <string name="mobile_exit_self">Process exited itself</string>
 +    <string name="mobile_exit_signal">Process ended by a signal</string>

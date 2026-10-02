@@ -879,12 +879,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setMessage(getString(timed ? R.string.mobile_logging_timed : R.string.mobile_logging_explanation, current))
             .setPositiveButton(R.string.mobile_logging_debug, (dialog, which) -> {
                 MobileDebugLogging.start(this);
+                disableMobileInputLogging();
                 showToast(getString(R.string.mobile_logging_started), true);
             })
             .setNeutralButton(R.string.mobile_logging_normal, (dialog, which) -> {
                 MobileDebugLogging.normal(this);
+                disableMobileInputLogging();
                 showToast(getString(R.string.mobile_logging_normalized), true);
             }).setNegativeButton(android.R.string.cancel, null).show();
+    }
+
+    private void disableMobileInputLogging() {
+        // The view caches this preference; apply it immediately, before another keystroke.
+        mTerminalView.setIsTerminalViewKeyLoggingEnabled(false);
+        mTermuxActivityRootView.setIsRootViewLoggingEnabled(false);
+        ViewUtils.setIsViewUtilsLoggingEnabled(false);
     }
 
     public TermuxActivityRootView getTermuxActivityRootView() {

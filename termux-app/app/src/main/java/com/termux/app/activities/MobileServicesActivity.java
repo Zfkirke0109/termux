@@ -143,6 +143,7 @@ public class MobileServicesActivity extends AppCompatActivity {
     }
     private void change(String name, String operation) {
         busy = true;
+        content.removeAllViews();
         label(getString(R.string.mobile_services_loading));
         MobileCommandRunner.BACKGROUND.execute(() -> {
             try {

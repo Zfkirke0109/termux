@@ -108,7 +108,7 @@ public class MobileRecoveryActivity extends AppCompatActivity {
             String description = exit.getDescription();
             report.append("\n\n").append(DateFormat.getDateTimeInstance().format(new Date(exit.getTimestamp())))
                 .append("\n").append(getString(reasons[MobileRecovery.classifyExit(exit.getReason(), description)]))
-                .append("\n").append(getString(R.string.mobile_exit_sample, exit.getPid(), exit.getStatus(), exit.getPss(), exit.getRss()));
+                .append("\n").append(getString(R.string.mobile_exit_sample, exit.getPid(), exit.getStatus(), exit.getPss(), exit.getRss(), exit.getReason()));
             if (description != null) report.append("\n").append(description.substring(0, Math.min(1024, description.length())));
         }
         return report.toString();
