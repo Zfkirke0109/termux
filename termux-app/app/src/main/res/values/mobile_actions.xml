@@ -1,0 +1,12 @@
+<resources>
+    <string name="mobile_search_title">Search recent output</string>
+    <string name="mobile_search_hint">Literal text, case-insensitive</string>
+    <string name="mobile_search_button">Search</string>
+    <string name="mobile_search_results">Matching rows (newest first)</string>
+    <string name="mobile_search_no_matches">No match in the recent search window (up to 2,000 rows / 250,000 characters).</string>
+    <string name="mobile_search_changed">Output changed. Search again to locate this text safely.</string>
+    <string name="mobile_search_row">Row %1$d:</string>
+    <string name="mobile_copy_visible">Copy visible output</string>
+    <string name="mobile_screen_copied">Visible output copied</string>
+    <string name="mobile_jump_latest">Jump to latest output</string>
+</resources>
