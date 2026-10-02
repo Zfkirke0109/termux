@@ -113,4 +113,6 @@ jobs:
           # Imported upstream files retain their original whitespace. Check our seed files only.
           git diff --cached --check -- README.md .github patches
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore: publish verified beta.3 PR 5357 source and signed arm64 APK'
+          git fetch origin "$GITHUB_REF_NAME"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' rebase "origin/$GITHUB_REF_NAME"
           git push origin "HEAD:${GITHUB_REF_NAME}"
