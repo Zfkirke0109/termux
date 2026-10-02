@@ -14,6 +14,21 @@ Reviewed 2026-10-02. This is an unofficial Termux beta.3 fork. Running on Androi
 
 Opening a panel does not change service state. Stopping a service and deleting a checkpoint require a specific confirmation in the app. Reconnect passes a validated tmux session ID as an argument to a new terminal; historical shell text is never executed.
 
+## Build-tool migration baseline
+
+| Setting | Current fork | Proposed API-37 validation lane |
+|---|---|---|
+| compile SDK | 30 | 37 after the toolchain migration |
+| target SDK | 28 | Retain until executable/plugin architecture is validated |
+| Android Gradle plugin | 4.2.2 | At least 9.1.1 for API 37.0, per the official support table |
+| Gradle | 7.2 | Match the chosen AGP; 9.1.1 documents Gradle 9.3.1 |
+| Build JDK | 11 | JDK 17 for the proposed AGP lane |
+| NDK | 22.1.7171670 | r28+ with verification of every native dependency |
+
+The [AGP API-support table](https://developer.android.com/build/releases/about-agp) and [AGP 9.1.1 compatibility matrix](https://developer.android.com/build/releases/agp-9-1-0-release-notes) make this a coordinated migration. The 16 KB minimum-tool guidance alone does not mean AGP 8.5.1 supports compiling API 37. Module namespaces, BuildConfig generation, resource behavior, desugaring and the Robolectric runtime also need reviewed updates. Keep the current reproducible build lane while this lane is developed.
+
+Do not remove `sharedUserId` just to silence its deprecation. [Android's migration guidance](https://developer.android.com/about/versions/13/behavior-changes-all) says removal breaks existing updates; opting fresh installations out also changes their identity. This fork and its installed plugins still rely on that shared identity.
+
 ## Highest-priority platform projects
 
 | Priority | Project | Concrete next implementation | Acceptance gate |
@@ -53,7 +68,9 @@ A complete Android 18 behavior/API baseline was not available in the official pa
 ## Verification record
 
 - 19 pure-Java regression tests passed locally for search, runit parsing, recovery parsing and debug deadline policy.
-- Full Android build, Robolectric UI tests and certificate checks are required in the root Actions workflow before an APK is published.
+- Final [CI run 37019352110](https://github.com/Zfkirke0109/termux/actions/runs/37019352110) passed **172 tests** (146 emulator + 26 app), including five Robolectric mobile-control tests, with no failures, errors or skips. All debug APKs compiled and matched the expected shared-key certificate.
+- The published arm64 APK was independently downloaded and verified with apksig: verified, no errors, certificate `b6da01480eefd5fbf2cd3771b8d1021ec791304bdd6c4bf41d3faabad48ee5e1`. Its SHA-256 is `dd6cb93e8ed0e5ce32bbcbf4c5a46a7951c012d001b5195a5a82ffb8683d5d5a`; version `0.119.0-beta.3+pr5357.mobile2.77db0f9`, package `com.termux`, code 1022. It matches the repository checksum.
+- The settings regression verifies that merely opening Settings preserves timed debugging, while selecting Debug explicitly (including the same value) cancels the timer and preserves the manual level. Live terminal/root-view input logging is disabled immediately by the new menu controls.
 - The previous mobile build was physically exercised on the S23 Ultra / Android 17 handset. The newly added mobile2 screens require a separate in-place update and device smoke test; updating Termux ends existing app processes/sessions.
 
 See [the device review](ANDROID17_REVIEW.md) for prior physical evidence and [the mobile2 smoke checklist](MOBILE2_TEST_CHECKLIST.md) for the new flows.

@@ -43,6 +43,14 @@
 - App-scoped logcat and exit history showed no reproduced Java/native crash during that test window. Vendor graphics warnings and a missing optional settings value were observed. Short-lived memory/dialog peaks and cumulative jank do not establish a leak or battery improvement. No global process/memory/battery settings were changed.
 - The new mobile2 features added after that device pass require a separate update and the [mobile2 checklist](MOBILE2_TEST_CHECKLIST.md). Split-screen/DeX, 16 KB and Android 18 certification remain unproven. Updating Termux restarts existing sessions; save active work before updating.
 
+## Mobile2 build verification
+
+All five follow-on improvements are implemented. Final source is commit `77db0f901b2f9bc1d00949ae98bc2271577c4034`; [CI run 37019352110](https://github.com/Zfkirke0109/termux/actions/runs/37019352110) passed 172 tests (146 emulator + 26 app), with no failures/errors/skips, and verified all debug APK signing certificates. Source/APK publication completed at `18707af071699780ed05e4dd2541d2652ce6316e`.
+
+The arm64 APK `termux-app_v0.119.0-beta.3+pr5357.mobile2.77db0f9-apt-android-7-github-debug_arm64-v8a.apk` was downloaded independently and verified with apksig. SHA-256: `dd6cb93e8ed0e5ce32bbcbf4c5a46a7951c012d001b5195a5a82ffb8683d5d5a`; certificate SHA-256 remains `b6da01480eefd5fbf2cd3771b8d1021ec791304bdd6c4bf41d3faabad48ee5e1`. Package `com.termux`, version code 1022 and target 28 remain compatible with the prior custom build's identity.
+
+The earlier physical logcat/smoke-test evidence applies to the first mobile build. The new mobile2 panels have not been installed or physically exercised by this task. Use the [new checklist](MOBILE2_TEST_CHECKLIST.md) after saving active work and installing the compatible update. See the [modernization roadmap](ANDROID17_18_MODERNIZATION.md) for remaining platform work.
+
 ## Device smoke test after an approved in-place update
 
 1. Confirm the version name contains `pr5357.mobile` and that old home/usr files remain present.

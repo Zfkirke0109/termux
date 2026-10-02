@@ -11,6 +11,10 @@ This repository contains an **unofficial custom build**, not a Termux project re
 
 ## Downloads
 
+**Latest mobile2 update:** [signed arm64 APK](https://github.com/Zfkirke0109/termux/raw/18707af071699780ed05e4dd2541d2652ce6316e/downloads/termux-app_v0.119.0-beta.3+pr5357.mobile2.77db0f9-apt-android-7-github-debug_arm64-v8a.apk). Version `0.119.0-beta.3+pr5357.mobile2.77db0f9`; SHA-256 `dd6cb93e8ed0e5ce32bbcbf4c5a46a7951c012d001b5195a5a82ffb8683d5d5a`. [Final CI run](https://github.com/Zfkirke0109/termux/actions/runs/37019352110): **172 tests passed** (146 emulator + 26 app), zero failures/errors/skips, all debug APK signatures verified. The downloaded arm64 APK was independently checked with apksig and matches the published checksum.
+
+Save active terminal work before updating. The five new features still require their phone smoke test after installation; Android 18 and 16 KB compatibility are not certified.
+
 `downloads/termux-app_v0.119.0-beta.3+apt-android-7-github-debug_arm64-v8a.apk` is the **unchanged upstream release APK**. It does **not** contain PR #5357.
 
 Upstream SHA-256: `3bb969df2400d884ccb929b7d79cc76861f291c98942c401e12408d734a460f3`.
