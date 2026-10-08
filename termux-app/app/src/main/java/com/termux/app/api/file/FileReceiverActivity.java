@@ -30,7 +30,6 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -200,27 +199,8 @@ public class FileReceiverActivity extends AppCompatActivity {
 
     public File saveStreamWithName(InputStream in, String attachmentFileName) {
         File receiveDir = new File(TERMUX_RECEIVEDIR);
-
-        if (DataUtils.isNullOrEmpty(attachmentFileName)) {
-            showErrorDialogAndQuit("File name cannot be null or empty");
-            return null;
-        }
-
-        if (!receiveDir.isDirectory() && !receiveDir.mkdirs()) {
-            showErrorDialogAndQuit("Cannot create directory: " + receiveDir.getAbsolutePath());
-            return null;
-        }
-
         try {
-            final File outFile = new File(receiveDir, attachmentFileName);
-            try (FileOutputStream f = new FileOutputStream(outFile)) {
-                byte[] buffer = new byte[4096];
-                int readBytes;
-                while ((readBytes = in.read(buffer)) > 0) {
-                    f.write(buffer, 0, readBytes);
-                }
-            }
-            return outFile;
+            return ReceivedFileWriter.save(receiveDir, attachmentFileName, in);
         } catch (IOException e) {
             showErrorDialogAndQuit("Error saving file:\n\n" + e);
             Logger.logStackTraceWithMessage(LOG_TAG, "Error saving file", e);

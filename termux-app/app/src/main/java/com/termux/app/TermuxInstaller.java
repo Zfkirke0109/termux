@@ -64,6 +64,8 @@ import static com.termux.shared.termux.TermuxConstants.TERMUX_STAGING_PREFIX_DIR
 final class TermuxInstaller {
 
     private static final String LOG_TAG = "TermuxInstaller";
+    private static final String BOOTSTRAP_SECOND_STAGE_PATH = "etc/termux/termux-bootstrap/second-stage/termux-bootstrap-second-stage.sh";
+    private static final String LEGACY_BOOTSTRAP_SECOND_STAGE_PATH = "etc/termux/bootstrap/termux-bootstrap-second-stage.sh";
 
     /** Performs bootstrap setup if necessary. */
     static void setupBootstrapIfNeeded(final Activity activity, final Runnable whenDone) {
@@ -206,7 +208,8 @@ final class TermuxInstaller {
                                     }
                                     if (zipEntryName.startsWith("bin/") || zipEntryName.startsWith("libexec") ||
                                         zipEntryName.startsWith("lib/apt/apt-helper") || zipEntryName.startsWith("lib/apt/methods") ||
-                                        zipEntryName.equals("etc/termux/bootstrap/termux-bootstrap-second-stage.sh")) {
+                                        zipEntryName.equals(BOOTSTRAP_SECOND_STAGE_PATH) ||
+                                        zipEntryName.equals(LEGACY_BOOTSTRAP_SECOND_STAGE_PATH)) {
                                         //noinspection OctalInteger
                                         Os.chmod(targetFile.getAbsolutePath(), 0700);
                                     }
@@ -228,10 +231,11 @@ final class TermuxInstaller {
                     }
 
                     // Run Termux bootstrap second stage.
-                    String termuxBootstrapSecondStageFile = TERMUX_PREFIX_DIR_PATH + "/etc/termux/bootstrap/termux-bootstrap-second-stage.sh";
-                    if (!FileUtils.fileExists(termuxBootstrapSecondStageFile, false)) {
-                        Logger.logInfo(LOG_TAG, "Not running Termux bootstrap second stage since script not found at \"" + termuxBootstrapSecondStageFile + "\" path.");
+                    File secondStageFile = findBootstrapSecondStageFile(TERMUX_PREFIX_DIR);
+                    if (secondStageFile == null) {
+                        Logger.logInfo(LOG_TAG, "Not running Termux bootstrap second stage since its script was not found.");
                     } else {
+                        String termuxBootstrapSecondStageFile = secondStageFile.getAbsolutePath();
                         if (!FileUtils.fileExists(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash", true)) {
                             Logger.logInfo(LOG_TAG, "Not running Termux bootstrap second stage since bash not found.");
                         }
@@ -277,6 +281,14 @@ final class TermuxInstaller {
                 }
             }
         }.start();
+    }
+
+    /** New APT bootstraps moved the script; older Android 5 bootstraps retain its original path. */
+    static File findBootstrapSecondStageFile(File prefix) {
+        File current = new File(prefix, BOOTSTRAP_SECOND_STAGE_PATH);
+        if (current.isFile()) return current;
+        File legacy = new File(prefix, LEGACY_BOOTSTRAP_SECOND_STAGE_PATH);
+        return legacy.isFile() ? legacy : null;
     }
 
     public static boolean checkIfMinOrMaxSdkVersionIsIncompatible(Activity activity,

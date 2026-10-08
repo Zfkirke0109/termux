@@ -60,6 +60,8 @@ The APK is intended for existing **GitHub-source** Termux installations. F-Droid
 
 ## Local build
 
+`apt-android-7` names the APT bootstrap for Android 7+ (API 24+), not APT version 7. This fork now pins the [October 2026 upstream bootstrap](https://github.com/termux/termux-packages/releases/tag/bootstrap-2026.10.04-r1%2Bapt.android-7) for fresh installs; an in-place APK update keeps the existing `PREFIX`. Installing `nala` or `pacman` inside Termux does not replace the app's bootstrap variant. The target SDK remains 28 because [Android's app-data executable restriction](https://developer.android.com/about/versions/10/behavior-changes-10#execute-permission) requires a separate architecture migration before raising it.
+
 Use Java 11, Android SDK platform 30/build-tools 30.0.3 and NDK 22.1.7171670:
 
 ```sh

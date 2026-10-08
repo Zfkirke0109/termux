@@ -1,0 +1,347 @@
+diff --git a/termux-app/app/build.gradle b/termux-app/app/build.gradle
+index 39bbbc9..22de9d0 100644
+--- a/termux-app/app/build.gradle
++++ b/termux-app/app/build.gradle
+@@ -227,11 +227,11 @@ task downloadBootstraps() {
+     doLast {
+         def packageVariant = project.ext.packageVariant
+         if (packageVariant == "apt-android-7") {
+-            def version =  "2025.03.28-r1" + "+" + packageVariant
+-            downloadBootstrap("aarch64", "c8d702b6f742935001c37cda81b8ac69504a95d5cf28f2899532dd8cd4b057eb", version)
+-            downloadBootstrap("arm",     "f3bb9d1b32552b34fff41861dbf193ec5ba2848d67d779ac1c7256da6640f85d", version)
+-            downloadBootstrap("i686",    "36db3e1ac3547f9a174fd763bd9a484fa1a3449cdd81e1cf2408ff0454f839c6", version)
+-            downloadBootstrap("x86_64",  "1c124ec2396ee70a51b0b0a574f29aa659526aa2b9f558f993b2fb05d1e51855", version)
++            def version = "2026.10.04-r1%2Bapt.android-7"
++            downloadBootstrap("aarch64", "c671bde0d9923ede9d9e972634a04042c93b1589b9a2ca9bc5c38848234e8c5b", version)
++            downloadBootstrap("arm",     "8bb0ebb4522d960c13ec604def7f088f6bafbae1acc8d10a4158753212a58aed", version)
++            downloadBootstrap("i686",    "b9ced6b498bd075e4e775fe9c415b288afa5ebddeeaf3917ef3d9925cd434dc0", version)
++            downloadBootstrap("x86_64",  "9933e09342ec96df3f912483db622f7b7ba78d4e627c80951d0123b6b2fff750", version)
+         } else if (packageVariant == "apt-android-5") {
+             def version = "2025.03.28-r3" + "+" + packageVariant
+             downloadBootstrap("aarch64", "147c98e610a30588665a89776314833c293006b12c70e65dcde6eb54c2344113", version)
+diff --git a/termux-app/app/src/main/java/com/termux/app/TermuxInstaller.java b/termux-app/app/src/main/java/com/termux/app/TermuxInstaller.java
+index 690fc48..285e8d0 100644
+--- a/termux-app/app/src/main/java/com/termux/app/TermuxInstaller.java
++++ b/termux-app/app/src/main/java/com/termux/app/TermuxInstaller.java
+@@ -64,6 +64,8 @@ import static com.termux.shared.termux.TermuxConstants.TERMUX_STAGING_PREFIX_DIR
+ final class TermuxInstaller {
+ 
+     private static final String LOG_TAG = "TermuxInstaller";
++    private static final String BOOTSTRAP_SECOND_STAGE_PATH = "etc/termux/termux-bootstrap/second-stage/termux-bootstrap-second-stage.sh";
++    private static final String LEGACY_BOOTSTRAP_SECOND_STAGE_PATH = "etc/termux/bootstrap/termux-bootstrap-second-stage.sh";
+ 
+     /** Performs bootstrap setup if necessary. */
+     static void setupBootstrapIfNeeded(final Activity activity, final Runnable whenDone) {
+@@ -206,7 +208,8 @@ final class TermuxInstaller {
+                                     }
+                                     if (zipEntryName.startsWith("bin/") || zipEntryName.startsWith("libexec") ||
+                                         zipEntryName.startsWith("lib/apt/apt-helper") || zipEntryName.startsWith("lib/apt/methods") ||
+-                                        zipEntryName.equals("etc/termux/bootstrap/termux-bootstrap-second-stage.sh")) {
++                                        zipEntryName.equals(BOOTSTRAP_SECOND_STAGE_PATH) ||
++                                        zipEntryName.equals(LEGACY_BOOTSTRAP_SECOND_STAGE_PATH)) {
+                                         //noinspection OctalInteger
+                                         Os.chmod(targetFile.getAbsolutePath(), 0700);
+                                     }
+@@ -228,10 +231,11 @@ final class TermuxInstaller {
+                     }
+ 
+                     // Run Termux bootstrap second stage.
+-                    String termuxBootstrapSecondStageFile = TERMUX_PREFIX_DIR_PATH + "/etc/termux/bootstrap/termux-bootstrap-second-stage.sh";
+-                    if (!FileUtils.fileExists(termuxBootstrapSecondStageFile, false)) {
+-                        Logger.logInfo(LOG_TAG, "Not running Termux bootstrap second stage since script not found at \"" + termuxBootstrapSecondStageFile + "\" path.");
++                    File secondStageFile = findBootstrapSecondStageFile(TERMUX_PREFIX_DIR);
++                    if (secondStageFile == null) {
++                        Logger.logInfo(LOG_TAG, "Not running Termux bootstrap second stage since its script was not found.");
+                     } else {
++                        String termuxBootstrapSecondStageFile = secondStageFile.getAbsolutePath();
+                         if (!FileUtils.fileExists(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash", true)) {
+                             Logger.logInfo(LOG_TAG, "Not running Termux bootstrap second stage since bash not found.");
+                         }
+@@ -279,6 +283,14 @@ final class TermuxInstaller {
+         }.start();
+     }
+ 
++    /** New APT bootstraps moved the script; older Android 5 bootstraps retain its original path. */
++    static File findBootstrapSecondStageFile(File prefix) {
++        File current = new File(prefix, BOOTSTRAP_SECOND_STAGE_PATH);
++        if (current.isFile()) return current;
++        File legacy = new File(prefix, LEGACY_BOOTSTRAP_SECOND_STAGE_PATH);
++        return legacy.isFile() ? legacy : null;
++    }
++
+     public static boolean checkIfMinOrMaxSdkVersionIsIncompatible(Activity activity,
+                                                                   Integer minSdk, String minRelease,
+                                                                   Integer maxSdk, String maxRelease) {
+diff --git a/termux-app/app/src/main/java/com/termux/app/api/file/FileReceiverActivity.java b/termux-app/app/src/main/java/com/termux/app/api/file/FileReceiverActivity.java
+index ca5c074..a2c379c 100644
+--- a/termux-app/app/src/main/java/com/termux/app/api/file/FileReceiverActivity.java
++++ b/termux-app/app/src/main/java/com/termux/app/api/file/FileReceiverActivity.java
+@@ -30,7 +30,6 @@ import java.io.ByteArrayInputStream;
+ import java.io.File;
+ import java.io.FileInputStream;
+ import java.io.FileNotFoundException;
+-import java.io.FileOutputStream;
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.nio.charset.StandardCharsets;
+@@ -200,27 +199,8 @@ public class FileReceiverActivity extends AppCompatActivity {
+ 
+     public File saveStreamWithName(InputStream in, String attachmentFileName) {
+         File receiveDir = new File(TERMUX_RECEIVEDIR);
+-
+-        if (DataUtils.isNullOrEmpty(attachmentFileName)) {
+-            showErrorDialogAndQuit("File name cannot be null or empty");
+-            return null;
+-        }
+-
+-        if (!receiveDir.isDirectory() && !receiveDir.mkdirs()) {
+-            showErrorDialogAndQuit("Cannot create directory: " + receiveDir.getAbsolutePath());
+-            return null;
+-        }
+-
+         try {
+-            final File outFile = new File(receiveDir, attachmentFileName);
+-            try (FileOutputStream f = new FileOutputStream(outFile)) {
+-                byte[] buffer = new byte[4096];
+-                int readBytes;
+-                while ((readBytes = in.read(buffer)) > 0) {
+-                    f.write(buffer, 0, readBytes);
+-                }
+-            }
+-            return outFile;
++            return ReceivedFileWriter.save(receiveDir, attachmentFileName, in);
+         } catch (IOException e) {
+             showErrorDialogAndQuit("Error saving file:\n\n" + e);
+             Logger.logStackTraceWithMessage(LOG_TAG, "Error saving file", e);
+diff --git a/termux-app/app/src/main/java/com/termux/app/api/file/ReceivedFileWriter.java b/termux-app/app/src/main/java/com/termux/app/api/file/ReceivedFileWriter.java
+new file mode 100644
+index 0000000..6b5f021
+--- /dev/null
++++ b/termux-app/app/src/main/java/com/termux/app/api/file/ReceivedFileWriter.java
+@@ -0,0 +1,81 @@
++package com.termux.app.api.file;
++
++import android.system.ErrnoException;
++import android.system.Os;
++import android.system.OsConstants;
++
++import java.io.File;
++import java.io.FileDescriptor;
++import java.io.FileOutputStream;
++import java.io.IOException;
++import java.io.InputStream;
++
++/** Saves an incoming share as one new file inside the receive directory. */
++final class ReceivedFileWriter {
++    private static final int MAX_COLLISIONS = 100;
++
++    private ReceivedFileWriter() {}
++
++    static boolean isSafeFileName(String name) {
++        if (name == null || name.isEmpty() || name.trim().isEmpty() || ".".equals(name) || "..".equals(name)
++            || new File(name).isAbsolute()) return false;
++        for (int i = 0; i < name.length(); i++) {
++            char c = name.charAt(i);
++            if (c == '/' || c == '\\' || c < 0x20 || c == 0x7f) return false;
++        }
++        return true;
++    }
++
++    static File save(File receiveDir, String name, InputStream input) throws IOException {
++        try (InputStream source = input) {
++            if (!isSafeFileName(name)) throw new IOException("File name must be a single name without path separators");
++            if (source == null) throw new IOException("Shared content could not be opened");
++            if (!receiveDir.isDirectory() && !receiveDir.mkdirs())
++                throw new IOException("Cannot create directory: " + receiveDir.getAbsolutePath());
++
++            File canonicalDir = receiveDir.getCanonicalFile();
++            for (int number = 0; number <= MAX_COLLISIONS; number++) {
++                File destination = new File(canonicalDir, nameWithSuffix(name, number));
++                // Reject a pre-existing symlink or any path that resolves outside the receive directory.
++                File canonicalDestination = destination.getCanonicalFile();
++                if (!canonicalDir.equals(canonicalDestination.getParentFile()))
++                    throw new IOException("Received file path is outside the downloads directory");
++                if (!destination.equals(canonicalDestination))
++                    throw new IOException("Received file name is a symbolic link");
++
++                FileDescriptor descriptor;
++                try {
++                    // O_EXCL prevents overwrites; O_NOFOLLOW also closes the check/open symlink race.
++                    descriptor = Os.open(destination.getPath(), OsConstants.O_WRONLY | OsConstants.O_CREAT
++                        | OsConstants.O_EXCL | OsConstants.O_NOFOLLOW, 0600);
++                } catch (ErrnoException error) {
++                    if (error.errno == OsConstants.EEXIST) continue;
++                    throw new IOException("Cannot create received file: " + destination.getName(), error);
++                }
++
++                boolean complete = false;
++                try {
++                    try (FileOutputStream output = new FileOutputStream(descriptor)) {
++                        byte[] buffer = new byte[8192];
++                        int length;
++                        while ((length = source.read(buffer)) != -1) {
++                            output.write(buffer, 0, length);
++                        }
++                    }
++                    complete = true;
++                } finally {
++                    if (!complete) destination.delete();
++                }
++                return destination;
++            }
++            throw new IOException("Too many files already have this name");
++        }
++    }
++
++    private static String nameWithSuffix(String name, int number) {
++        if (number == 0) return name;
++        int dot = name.lastIndexOf('.');
++        if (dot <= 0) dot = name.length();
++        return name.substring(0, dot) + " (" + number + ")" + name.substring(dot);
++    }
++}
+diff --git a/termux-app/app/src/test/java/com/termux/app/TermuxInstallerTest.java b/termux-app/app/src/test/java/com/termux/app/TermuxInstallerTest.java
+new file mode 100644
+index 0000000..1add677
+--- /dev/null
++++ b/termux-app/app/src/test/java/com/termux/app/TermuxInstallerTest.java
+@@ -0,0 +1,36 @@
++package com.termux.app;
++
++import static org.junit.Assert.assertEquals;
++import static org.junit.Assert.assertNull;
++
++import java.io.File;
++import java.nio.file.Files;
++import org.junit.Rule;
++import org.junit.Test;
++import org.junit.rules.TemporaryFolder;
++
++public class TermuxInstallerTest {
++    @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
++
++    private File createScript(String relativePath) throws Exception {
++        File script = new File(temporaryFolder.getRoot(), relativePath);
++        Files.createDirectories(script.getParentFile().toPath());
++        Files.createFile(script.toPath());
++        return script;
++    }
++
++    @Test public void selectsCurrentSecondStageBeforeLegacyScript() throws Exception {
++        File legacy = createScript("etc/termux/bootstrap/termux-bootstrap-second-stage.sh");
++        assertEquals(legacy, TermuxInstaller.findBootstrapSecondStageFile(temporaryFolder.getRoot()));
++
++        File current = createScript("etc/termux/termux-bootstrap/second-stage/termux-bootstrap-second-stage.sh");
++        assertEquals(current, TermuxInstaller.findBootstrapSecondStageFile(temporaryFolder.getRoot()));
++    }
++
++    @Test public void doesNotSelectMissingOrDirectoryPath() throws Exception {
++        assertNull(TermuxInstaller.findBootstrapSecondStageFile(temporaryFolder.getRoot()));
++        Files.createDirectories(new File(temporaryFolder.getRoot(),
++            "etc/termux/termux-bootstrap/second-stage/termux-bootstrap-second-stage.sh").toPath());
++        assertNull(TermuxInstaller.findBootstrapSecondStageFile(temporaryFolder.getRoot()));
++    }
++}
+diff --git a/termux-app/app/src/test/java/com/termux/app/api/file/ReceivedFileWriterTest.java b/termux-app/app/src/test/java/com/termux/app/api/file/ReceivedFileWriterTest.java
+new file mode 100644
+index 0000000..8cb368f
+--- /dev/null
++++ b/termux-app/app/src/test/java/com/termux/app/api/file/ReceivedFileWriterTest.java
+@@ -0,0 +1,97 @@
++package com.termux.app.api.file;
++
++import org.junit.Rule;
++import org.junit.Test;
++import org.junit.rules.TemporaryFolder;
++import org.junit.runner.RunWith;
++import org.robolectric.RobolectricTestRunner;
++
++import java.io.ByteArrayInputStream;
++import java.io.File;
++import java.io.IOException;
++import java.io.InputStream;
++import java.nio.charset.StandardCharsets;
++import java.nio.file.Files;
++
++import static org.junit.Assert.assertArrayEquals;
++import static org.junit.Assert.assertEquals;
++import static org.junit.Assert.assertFalse;
++import static org.junit.Assert.assertTrue;
++import static org.junit.Assert.fail;
++import static org.junit.Assume.assumeNoException;
++
++@RunWith(RobolectricTestRunner.class)
++public class ReceivedFileWriterTest {
++    @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
++
++    @Test public void rejectsPathNamesFromSharedMetadata() throws Exception {
++        File downloads = temporaryFolder.newFolder("downloads");
++        for (String name : new String[]{"../.termux/termux.properties", "/tmp/termux.properties",
++            "..\\termux.properties", ".", "..", "", " ", "bad\nname", "bad" + (char) 0 + "name"}) {
++            assertFalse(name, ReceivedFileWriter.isSafeFileName(name));
++            try {
++                ReceivedFileWriter.save(downloads, name, text("unsafe"));
++                fail("Accepted unsafe file name: " + name);
++            } catch (IOException expected) {
++                assertTrue(expected.getMessage().contains("File name"));
++            }
++        }
++        assertTrue(ReceivedFileWriter.isSafeFileName("résumé 📁.txt"));
++    }
++
++    @Test public void savesUnicodeNameWithoutReplacingExistingFile() throws Exception {
++        File downloads = temporaryFolder.newFolder("downloads");
++        File existing = new File(downloads, "résumé.txt");
++        Files.write(existing.toPath(), "original".getBytes(StandardCharsets.UTF_8));
++
++        File saved = ReceivedFileWriter.save(downloads, "résumé.txt", text("incoming"));
++
++        assertEquals(downloads.getCanonicalFile(), saved.getCanonicalFile().getParentFile());
++        assertEquals("résumé (1).txt", saved.getName());
++        assertArrayEquals("original".getBytes(StandardCharsets.UTF_8), Files.readAllBytes(existing.toPath()));
++        assertArrayEquals("incoming".getBytes(StandardCharsets.UTF_8), Files.readAllBytes(saved.toPath()));
++    }
++
++    @Test public void rejectsExistingSymlink() throws Exception {
++        File downloads = temporaryFolder.newFolder("downloads");
++        File outside = temporaryFolder.newFile("outside.txt");
++        Files.write(outside.toPath(), "original".getBytes(StandardCharsets.UTF_8));
++        File link = new File(downloads, "incoming.txt");
++        try {
++            Files.createSymbolicLink(link.toPath(), outside.toPath());
++        } catch (IOException | UnsupportedOperationException | SecurityException unavailable) {
++            assumeNoException(unavailable);
++        }
++
++        try {
++            ReceivedFileWriter.save(downloads, link.getName(), text("overwrite"));
++            fail("Followed a symlink in downloads");
++        } catch (IOException expected) {
++            assertTrue(expected.getMessage().contains("outside") || expected.getMessage().contains("symbolic link"));
++        }
++        assertArrayEquals("original".getBytes(StandardCharsets.UTF_8), Files.readAllBytes(outside.toPath()));
++    }
++
++    @Test public void removesIncompleteFileAfterReadFailure() throws Exception {
++        File downloads = temporaryFolder.newFolder("downloads");
++        InputStream broken = new InputStream() {
++            private boolean first = true;
++            @Override public int read() throws IOException {
++                if (first) { first = false; return 'x'; }
++                throw new IOException("source failed");
++            }
++        };
++
++        try {
++            ReceivedFileWriter.save(downloads, "incomplete.txt", broken);
++            fail("Saved incomplete content");
++        } catch (IOException expected) {
++            assertEquals("source failed", expected.getMessage());
++        }
++        assertFalse(new File(downloads, "incomplete.txt").exists());
++    }
++
++    private static InputStream text(String value) {
++        return new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8));
++    }
++}
